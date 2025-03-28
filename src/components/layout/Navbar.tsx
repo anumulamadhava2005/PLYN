@@ -20,6 +20,7 @@ import LogoAnimation from '@/components/ui/LogoAnimation';
 import NavLink from '@/components/layout/NavLink';
 import NotificationsPopover from '@/components/notifications/NotificationsPopover';
 import { useToast } from '@/components/ui/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 const navLinks = [
   { label: 'Home', path: '/' },

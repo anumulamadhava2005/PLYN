@@ -319,16 +319,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       console.log("Attempting to sign out...");
       
-      // Important: Call supabase signOut first before clearing state
-      const { error } = await supabase.auth.signOut();
-      
-      if (error) {
-        console.error("Supabase sign out error:", error);
-        throw error;
-      }
-      
-      console.log("Sign out successful");
-      
       // Clear all auth state after successful signOut from Supabase
       setUser(null);
       setSession(null);
@@ -342,6 +332,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         title: "Signed out",
         description: "You've been signed out successfully.",
       });
+      
+      // Important: Call supabase signOut first before clearing state
+      const { error } = await supabase.auth.signOut();
+      
+      if (error) {
+        console.error("Supabase sign out error:", error);
+        throw error;
+      }
+      
+      console.log("Sign out successful");
     } catch (error: any) {
       console.error("Sign out error:", error);
       toast({

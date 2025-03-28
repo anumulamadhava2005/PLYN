@@ -38,50 +38,39 @@ export const useAdminDashboard = () => {
   const checkAdminStatus = () => {
     const isAdminLoggedIn = sessionStorage.getItem('isAdminLoggedIn') === 'true';
     const adminEmail = sessionStorage.getItem('adminEmail');
-    
+
     console.log("Checking admin status:", { isAdminLoggedIn, adminEmail });
-    
+
     if (!isAdminLoggedIn || adminEmail !== 'srimanmudavath@gmail.com') {
       console.log("Not admin - redirecting to login");
       window.location.href = '/admin-login';
       return false;
     }
-    
+
     return true;
   };
 
   // Fetch merchant applications
   const fetchMerchantApplications = async () => {
     setLoading(true);
-    
+
     try {
-      // Check if admin is authenticated through session data
-      const { data: sessionData } = await supabase.auth.getSession();
-      
-      if (!sessionData.session) {
-        console.log("No authenticated session found for admin dashboard access");
-        toast({
-          title: "Authentication Required",
-          description: "You must be logged in as an admin to access this dashboard.",
-          variant: "destructive",
-        });
-        navigate('/admin-login');
+      console.log("Fetching merchant applications using direct RPC method");
+
+      // Fetch merchant applications directly from the database
+      const { data: allMerchants, error } = await supabase
+        .from('merchants')
+        .select('*');
+
+      if (error) {
+        console.error("Error fetching merchants:", error.message);
         return;
       }
-      
-      // First try the RPC method to fetch all merchants directly
-      console.log("Fetching merchant applications using direct RPC method");
-      const { data: allMerchants, error: rpcError } = await supabase
-        .rpc<MerchantData[]>('get_all_merchants', {});
-      
-      if (rpcError) {
-        console.error("Error fetching merchants via RPC:", rpcError);
-        throw rpcError;
-      }
-      
+
+
       if (allMerchants) {
         console.log("Merchants data retrieved:", allMerchants);
-        
+
         // Process merchants by status
         const pending = allMerchants.filter(m => m.status === 'pending').map(merchant => ({
           id: merchant.id,
@@ -89,10 +78,11 @@ export const useAdminDashboard = () => {
           businessEmail: merchant.business_email,
           businessPhone: merchant.business_phone,
           serviceCategory: merchant.service_category,
+          businessAddress: merchant.business_address,
           submittedAt: new Date(merchant.created_at).toLocaleDateString(),
           status: 'pending' as 'pending' | 'approved' | 'rejected'
         }));
-        
+
         const approved = allMerchants.filter(m => m.status === 'approved').map(merchant => ({
           id: merchant.id,
           businessName: merchant.business_name,
@@ -102,7 +92,7 @@ export const useAdminDashboard = () => {
           submittedAt: new Date(merchant.created_at).toLocaleDateString(),
           status: 'approved' as 'pending' | 'approved' | 'rejected'
         }));
-        
+
         const rejected = allMerchants.filter(m => m.status === 'rejected').map(merchant => ({
           id: merchant.id,
           businessName: merchant.business_name,
@@ -112,11 +102,11 @@ export const useAdminDashboard = () => {
           submittedAt: new Date(merchant.created_at).toLocaleDateString(),
           status: 'rejected' as 'pending' | 'approved' | 'rejected'
         }));
-        
+
         setPendingApplications(pending);
         setApprovedApplications(approved);
         setRejectedApplications(rejected);
-        
+
         // Update stats
         setStats({
           totalMerchants: approved.length,
@@ -147,35 +137,34 @@ export const useAdminDashboard = () => {
       // Update the merchant status in the database
       const { error } = await supabase
         .from('merchants')
-        .update({ status: 'approved' })
-        .eq('id', merchantId);
-      
+        .update({ status: "approved" })
+        .eq('id', merchantId)
       if (error) {
         console.error("Error approving merchant:", error);
         throw error;
       }
-      
+
       // Update profiles table to set is_merchant to true
       const { error: profileError } = await supabase
         .from('profiles')
         .update({ is_merchant: true })
         .eq('id', merchantId);
-          
+
       if (profileError) {
         console.error('Error updating profile:', profileError);
       }
-      
+
       // Update local state
       setPendingApplications(prev => prev.filter(app => app.id !== merchantId));
-      
+
       toast({
         title: "Merchant Approved",
         description: "The merchant application has been approved successfully.",
       });
-      
+
       // Refresh merchant applications
       fetchMerchantApplications();
-      
+
     } catch (error: any) {
       console.error('Error approving merchant:', error);
       toast({
@@ -195,23 +184,23 @@ export const useAdminDashboard = () => {
         .from('merchants')
         .update({ status: 'rejected' })
         .eq('id', merchantId);
-      
+
       if (error) {
         console.error("Error rejecting merchant:", error);
         throw error;
       }
-      
+
       // Update local state
       setPendingApplications(prev => prev.filter(app => app.id !== merchantId));
-      
+
       toast({
         title: "Merchant Rejected",
         description: "The merchant application has been rejected.",
       });
-      
+
       // Refresh data
       fetchMerchantApplications();
-      
+
     } catch (error: any) {
       console.error('Error rejecting merchant:', error);
       toast({

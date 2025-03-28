@@ -57,6 +57,26 @@ const MerchantDashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  const handleLogout = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+
+      toast({
+        title: "Logged Out",
+        description: "You have been successfully logged out.",
+      });
+
+      navigate('/auth');
+    } catch (error: any) {
+      toast({
+        title: "Logout Failed",
+        description: error.message || "An error occurred while logging out.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const processedAppointments = useMemo(() => {
     return bookings.map(booking => ({
       id: booking.id,
@@ -66,10 +86,10 @@ const MerchantDashboard = () => {
       time: booking.time_slot,
       duration: `${booking.service_duration} min`,
       // Convert the string status to the expected union type
-      status: (booking.status === 'confirmed' 
-        ? 'confirmed' 
-        : booking.status === 'cancelled' 
-          ? 'cancelled' 
+      status: (booking.status === 'confirmed'
+        ? 'confirmed'
+        : booking.status === 'cancelled'
+          ? 'cancelled'
           : 'pending') as 'pending' | 'confirmed' | 'cancelled'
     }));
   }, [bookings]);
@@ -86,7 +106,7 @@ const MerchantDashboard = () => {
 
   const metrics = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
-    
+
     return {
       totalAppointments: bookings.length,
       todayAppointments: bookings.filter(b => b.booking_date === today).length,
@@ -101,7 +121,8 @@ const MerchantDashboard = () => {
         navigate('/auth');
         return;
       }
-      
+      console.log(isMerchant);
+
       if (user && !isMerchant) {
         toast({
           title: "Access Denied",
@@ -111,7 +132,7 @@ const MerchantDashboard = () => {
         navigate('/');
         return;
       }
-      
+
       if (user && isMerchant) {
         // Check if merchant is approved
         try {
@@ -120,11 +141,11 @@ const MerchantDashboard = () => {
             .select('status')
             .eq('id', user.id)
             .single();
-            
+
           if (error) throw error;
-          
+
           setMerchantStatus(merchantData?.status || null);
-          
+
           if (merchantData?.status !== 'approved') {
             toast({
               title: "Access Restricted",
@@ -134,7 +155,7 @@ const MerchantDashboard = () => {
             navigate('/merchant-pending');
             return;
           }
-          
+
           loadMerchantData();
         } catch (error) {
           console.error("Error checking merchant status:", error);
@@ -146,73 +167,73 @@ const MerchantDashboard = () => {
         }
       }
     };
-    
+
     checkAuth();
   }, [user, isMerchant, navigate]);
 
   const loadMerchantData = async () => {
     if (!user) return;
-    
+
     setIsLoading(true);
-    
+
     try {
       const { data: merchantData, error: merchantError } = await supabase
         .from('merchants')
         .select('*')
         .eq('id', user.id)
         .single();
-        
+
       if (merchantError) {
         throw merchantError;
       }
-      
+
       if (merchantData) {
         setMerchantData(merchantData);
-        
+
         const { data: slotsData, error: slotsError } = await supabase
           .from('slots')
           .select('*')
           .eq('merchant_id', user.id)
           .order('date', { ascending: true })
           .order('start_time', { ascending: true });
-          
+
         if (slotsError) {
           throw slotsError;
         }
-        
+
         setSlots(slotsData || []);
-        
+
         const { data: bookingsData, error: bookingsError } = await supabase
           .from('bookings')
           .select('*')
           .eq('merchant_id', user.id);
-          
+
         if (bookingsError) {
           throw bookingsError;
         }
-        
+
         const enhancedBookings: BookingData[] = [];
-        
+
         for (const booking of bookingsData || []) {
           const { data: profileData } = await supabase
             .from('profiles')
             .select('username, phone_number')
             .eq('id', booking.user_id)
             .single();
-            
+
           const { data: slotData } = await supabase
             .from('slots')
             .select('date, start_time, end_time')
             .eq('id', booking.slot_id)
             .single();
-            
+
           enhancedBookings.push({
             ...booking,
             user_profile: profileData || { username: 'Unknown User' },
             slot: slotData || undefined
           });
         }
-        
+
         setBookings(enhancedBookings);
       } else {
         toast({
@@ -243,7 +264,7 @@ const MerchantDashboard = () => {
 
   const handleCreateSlot = async () => {
     if (!user || !merchantData) return;
-    
+
     if (!newSlot.date || !newSlot.startTime || !newSlot.endTime) {
       toast({
         title: "Missing Information",
@@ -252,7 +273,7 @@ const MerchantDashboard = () => {
       });
       return;
     }
-    
+
     try {
       const { data, error } = await supabase
         .from('slots')
@@ -264,11 +285,11 @@ const MerchantDashboard = () => {
           is_booked: false
         })
         .select();
-        
+
       if (error) {
         throw error;
       }
-      
+
       if (data) {
         setSlots(prev => [...prev, data[0]]);
         setNewSlot({
@@ -276,7 +297,7 @@ const MerchantDashboard = () => {
           startTime: '',
           endTime: '',
         });
-        
+
         toast({
           title: "Slot Created",
           description: "Your new availability slot has been added.",
@@ -297,17 +318,17 @@ const MerchantDashboard = () => {
         .from('bookings')
         .update({ status: newStatus })
         .eq('id', bookingId);
-        
+
       if (error) {
         throw error;
       }
-      
-      setBookings(prev => 
-        prev.map(booking => 
+
+      setBookings(prev =>
+        prev.map(booking =>
           booking.id === bookingId ? { ...booking, status: newStatus } : booking
         )
       );
-      
+
       toast({
         title: "Booking Updated",
         description: `Booking status updated to ${newStatus}.`,
@@ -323,11 +344,11 @@ const MerchantDashboard = () => {
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      weekday: 'short', 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric' 
+    return date.toLocaleDateString('en-US', {
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
     });
   };
 
@@ -341,21 +362,21 @@ const MerchantDashboard = () => {
     return `${hour}:${min} ${ampm}`;
   };
 
-  if (isLoading) {
-    return (
-      <PageTransition>
-        <div className="min-h-screen flex flex-col">
-          <div className="flex-grow pt-24 pb-12 px-4 flex items-center justify-center">
-            <div className="text-center">
-              <div className="animate-spin mb-4 mx-auto h-8 w-8 border-t-2 border-b-2 border-primary rounded-full"></div>
-              <p>Loading your merchant dashboard...</p>
-            </div>
-          </div>
-        </div>
-      </PageTransition>
-    );
-  }
-  
+  // if (isLoading) {
+  //   return (
+  //     <PageTransition>
+  //       <div className="min-h-screen flex flex-col">
+  //         <div className="flex-grow pt-24 pb-12 px-4 flex items-center justify-center">
+  //           <div className="text-center">
+  //             <div className="animate-spin mb-4 mx-auto h-8 w-8 border-t-2 border-b-2 border-primary rounded-full"></div>
+  //             <p>Loading your merchant dashboard...</p>
+  //           </div>
+  //         </div>
+  //       </div>
+  //     </PageTransition>
+  //   );
+  // }
+
   if (merchantStatus && merchantStatus !== 'approved') {
     return (
       <PageTransition>
@@ -380,7 +401,7 @@ const MerchantDashboard = () => {
       </Helmet>
       <div className="flex h-screen bg-black text-white overflow-hidden">
         <MerchantSidebar />
-        
+
         <div className="flex-1 overflow-auto bg-gradient-to-br from-black to-gray-900">
           <div className="p-6 flex justify-between items-center">
             <div>
@@ -389,28 +410,32 @@ const MerchantDashboard = () => {
                 Welcome back, {userProfile?.username || 'Merchant'}
               </p>
             </div>
-            
+
+            <Button onClick={handleLogout} className="bg-red-600 hover:bg-red-700">
+              Logout
+            </Button>
+
             <Button className="bg-primary">
               <Plus className="w-4 h-4 mr-2" />
               Create Appointment
             </Button>
           </div>
-          
+
           <div className="p-6 space-y-6">
-            <DashboardMetrics 
+            <DashboardMetrics
               totalAppointments={metrics.totalAppointments}
               todayAppointments={metrics.todayAppointments}
               totalClients={metrics.totalClients}
               availableSlots={metrics.availableSlots}
             />
-            
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <AppointmentsList 
+              <AppointmentsList
                 appointments={processedAppointments}
                 onUpdateStatus={handleUpdateBookingStatus}
               />
-              
-              <WorkingHoursGrid 
+
+              <WorkingHoursGrid
                 slots={processedSlots}
                 selectedDate={selectedDate}
                 onDateChange={setSelectedDate}

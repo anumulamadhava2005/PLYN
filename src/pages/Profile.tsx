@@ -10,6 +10,7 @@ import { AnimatedButton } from '@/components/ui/AnimatedButton';
 import { UserCircle, Mail, Phone, Calendar, Users, LogOut, Briefcase, ArrowUpRight, Store, Coins } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { getUserCoins } from '@/utils/bookingUtils';
+import { supabase } from '@/integrations/supabase/client';
 
 const Profile = () => {
   const { user, userProfile, signOut, isMerchant } = useAuth();
@@ -42,7 +43,7 @@ const Profile = () => {
 
   const handleSignOut = async () => {
     try {
-      await signOut();
+      await supabase.auth.signOut();
       // Force clear any lingering session data
       window.localStorage.removeItem('supabase.auth.token');
       // Force navigate to auth page after signout

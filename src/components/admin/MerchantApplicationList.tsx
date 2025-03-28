@@ -11,11 +11,11 @@ type UserProfile = {
 
 type MerchantApplication = {
   id: string;
-  business_name: string;
-  business_address: string;
-  business_email: string;
-  business_phone: string;
-  service_category: string;
+  businessName: string;
+  businessAddress: string;
+  businessEmail: string;
+  businessPhone: string;
+  serviceCategory: string;
   status: 'pending' | 'approved' | 'rejected';
   created_at: string;
   user_profile: UserProfile | null;
@@ -67,11 +67,11 @@ const MerchantApplicationList: React.FC<MerchantApplicationListProps> = ({
               <MerchantApplicationCard
                 key={application.id}
                 id={application.id}
-                business_name={application.business_name}
-                business_address={application.business_address}
-                business_email={application.business_email}
-                business_phone={application.business_phone}
-                service_category={application.service_category}
+                business_name={application.businessName}
+                business_address={application.businessAddress}
+                business_email={application.businessEmail}
+                business_phone={application.businessPhone}
+                service_category={application.serviceCategory}
                 created_at={application.created_at}
                 user_profile={application.user_profile}
                 onApprove={onApprove}

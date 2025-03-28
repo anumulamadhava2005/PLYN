@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/use-toast';
 import ThemeToggle from '@/components/ui/theme-toggle';
 import { motion } from 'framer-motion';
 import { useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 
 const AdminNavbar = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -14,6 +15,7 @@ const AdminNavbar = () => {
   const { toast } = useToast();
 
   const handleLogout = () => {
+    supabase.auth.signOut();
     // Clear admin session
     sessionStorage.removeItem('isAdminLoggedIn');
     sessionStorage.removeItem('adminEmail');
