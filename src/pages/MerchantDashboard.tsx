@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -16,6 +17,9 @@ import { Plus, Calendar, Clock, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
 import PageTransition from '@/components/transitions/PageTransition';
+import { format } from 'date-fns';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import SlotManager from '@/components/merchant/SlotManager';
 
 // Define the missing BookingData type
 interface BookingData {
@@ -48,12 +52,9 @@ const MerchantDashboard = () => {
   const [slots, setSlots] = useState<any[]>([]);
   const [bookings, setBookings] = useState<BookingData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [newSlot, setNewSlot] = useState({
-    date: '',
-    startTime: '',
-    endTime: '',
-  });
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [activeView, setActiveView] = useState<'view' | 'create'>('view');
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -77,6 +78,7 @@ const MerchantDashboard = () => {
     }
   };
 
+
   const processedAppointments = useMemo(() => {
     return bookings.map(booking => ({
       id: booking.id,
@@ -95,14 +97,18 @@ const MerchantDashboard = () => {
   }, [bookings]);
 
   const processedSlots = useMemo(() => {
-    return slots.map(slot => ({
+    // Filter slots for the selected date
+    const formattedDate = format(selectedDate, 'yyyy-MM-dd');
+    const filteredSlots = slots.filter(slot => slot.date === formattedDate);
+
+    return filteredSlots.map(slot => ({
       id: slot.id,
       day: new Date(slot.date).toLocaleDateString('en-US', { weekday: 'short' }),
       time: slot.start_time,
       // Fix the status type to match the expected union type
       status: slot.is_booked ? 'booked' : 'available' as 'available' | 'booked' | 'unavailable'
     }));
-  }, [slots]);
+  }, [slots, selectedDate]);
 
   const metrics = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -235,6 +241,7 @@ const MerchantDashboard = () => {
         }
 
         setBookings(enhancedBookings);
+        await loadSlotsForDate(selectedDate);
       } else {
         toast({
           title: "Complete Your Profile",
@@ -254,63 +261,74 @@ const MerchantDashboard = () => {
     }
   };
 
+
+  const loadSlotsForDate = React.useCallback(async (date: Date) => {
+    if (!user) return;
+
+    try {
+      setIsRefreshing(true);
+      const formattedDate = format(date, 'yyyy-MM-dd');
+
+      const { data: slotsData, error: slotsError } = await supabase
+        .from('slots')
+        .select('*')
+        .eq('merchant_id', user.id)
+        .eq('date', formattedDate)
+        .order('start_time', { ascending: true });
+
+      if (slotsError) {
+        throw slotsError;
+      }
+
+      // Update slots state with the filtered data
+      setSlots(prevSlots => {
+        // Remove slots for this date and add the new ones
+        const otherSlots = prevSlots.filter(slot => slot.date !== formattedDate);
+        return [...otherSlots, ...(slotsData || [])];
+      });
+    } catch (error: any) {
+      console.error('Error loading slots:', error);
+      toast({
+        title: "Failed to Load Slots",
+        description: error.message || "An error occurred while loading slots.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [user, toast]);
+
+
+  // When selected date changes, load slots for that date
+  useEffect(() => {
+    if (user && merchantData) {
+      loadSlotsForDate(selectedDate);
+    }
+  }, [selectedDate, user, merchantData, loadSlotsForDate]);
+
+  const handleDateChange = (date: Date) => {
+    setSelectedDate(date);
+  };
+
   const handleNewSlotChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setNewSlot(prev => ({
+    setSlots(prev => ({
       ...prev,
       [name]: value
     }));
   };
 
-  const handleCreateSlot = async () => {
-    if (!user || !merchantData) return;
 
-    if (!newSlot.date || !newSlot.startTime || !newSlot.endTime) {
-      toast({
-        title: "Missing Information",
-        description: "Please provide all required slot details.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from('slots')
-        .insert({
-          merchant_id: user.id,
-          date: newSlot.date,
-          start_time: newSlot.startTime,
-          end_time: newSlot.endTime,
-          is_booked: false
-        })
-        .select();
-
-      if (error) {
-        throw error;
-      }
-
-      if (data) {
-        setSlots(prev => [...prev, data[0]]);
-        setNewSlot({
-          date: '',
-          startTime: '',
-          endTime: '',
-        });
-
-        toast({
-          title: "Slot Created",
-          description: "Your new availability slot has been added.",
-        });
-      }
-    } catch (error: any) {
-      toast({
-        title: "Failed to Create Slot",
-        description: error.message || "An error occurred while creating the slot.",
-        variant: "destructive",
-      });
-    }
+  // Handle refresh slots button click
+  const handleRefreshSlots = () => {
+    loadSlotsForDate(selectedDate);
   };
+  // Handle slot creation completion
+  const handleSlotsUpdated = () => {
+    loadSlotsForDate(selectedDate);
+    setActiveView('view');
+  };
+
 
   const handleUpdateBookingStatus = async (bookingId: string, newStatus: string) => {
     try {
@@ -340,26 +358,6 @@ const MerchantDashboard = () => {
         variant: "destructive",
       });
     }
-  };
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      weekday: 'short',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
-
-  const formatTime = (timeString: string) => {
-    const timeParts = timeString.split(':');
-    let hour = parseInt(timeParts[0]);
-    const min = timeParts[1];
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    hour = hour % 12;
-    hour = hour ? hour : 12; // Convert 0 to 12
-    return `${hour}:${min} ${ampm}`;
   };
 
   // if (isLoading) {
@@ -435,11 +433,33 @@ const MerchantDashboard = () => {
                 onUpdateStatus={handleUpdateBookingStatus}
               />
 
-              <WorkingHoursGrid
-                slots={processedSlots}
-                selectedDate={selectedDate}
-                onDateChange={setSelectedDate}
-              />
+              <div>
+                <Tabs value={activeView} onValueChange={(value) => setActiveView(value as 'view' | 'create')}>
+                  <div className="flex justify-between items-center mb-4">
+                    <TabsList>
+                      <TabsTrigger value="view">View Slots</TabsTrigger>
+                      <TabsTrigger value="create">Create Slots</TabsTrigger>
+                    </TabsList>
+                  </div>
+
+                  <TabsContent value="view" className="mt-0">
+                    <WorkingHoursGrid
+                      slots={processedSlots}
+                      selectedDate={selectedDate}
+                      onDateChange={handleDateChange}
+                      onRefresh={handleRefreshSlots}
+                      isLoading={isRefreshing}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="create" className="mt-0">
+                    <SlotManager
+                      merchantId={user?.id || ''}
+                      onSlotsUpdated={handleSlotsUpdated}
+                    />
+                  </TabsContent>
+                </Tabs>
+              </div>
             </div>
           </div>
         </div>
