@@ -58,14 +58,24 @@ export type TimeSlot = {
   end_time: string;
   is_booked: boolean;
   service_duration?: number;
-  service_name?: string;
-  service_price?: number;
 };
 
-export type SlotAvailability = {
+export interface SlotAvailability {
   date: string;
   slots: {
     available: number;
     booked: number;
   };
-};
+}
+
+export interface DisplaySlot {
+  id: string;
+  day: string;
+  time: string;
+  status: 'available' | 'booked' | 'unavailable';
+}
+
+export interface SlotFormData {
+  startTime: string;
+  endTime: string;
+}

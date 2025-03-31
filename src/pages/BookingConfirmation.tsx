@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -43,6 +42,24 @@ const BookingConfirmation = () => {
 
   const handlePrint = () => {
     window.print();
+  };
+
+  // Format payment method for display
+  const getFormattedPaymentMethod = (method) => {
+    if (!method) return 'Payment complete';
+    
+    const methodMap = {
+      'credit_card': 'Credit Card',
+      'plyn_coins': 'PLYN Coins',
+      'phonepe': 'PhonePe',
+      'paytm': 'Paytm',
+      'netbanking': 'Net Banking',
+      'razorpay': 'RazorPay',
+      'qr_code': 'QR Code',
+      'other': 'Other Payment Method'
+    };
+    
+    return methodMap[method] || method.replace('_', ' ');
   };
 
   return (
@@ -204,13 +221,15 @@ const BookingConfirmation = () => {
                       <h3 className="font-medium">Payment</h3>
                       <p className="text-sm text-muted-foreground">
                         {bookingData.paymentDetails?.paymentMethod 
-                          ? `Paid with ${bookingData.paymentDetails.paymentMethod.replace('_', ' ')}`
-                          : `Card ending in ${bookingData.paymentDetails?.cardNumber.slice(-4)}`
+                          ? `Paid with ${getFormattedPaymentMethod(bookingData.paymentDetails.paymentMethod)}`
+                          : bookingData.paymentDetails?.cardNumber
+                            ? `Card ending in ${bookingData.paymentDetails.cardNumber.slice(-4)}`
+                            : "Payment complete"
                         }
                       </p>
                     </div>
                     <div className="text-xl font-bold">
-                      ${bookingData.finalPrice !== undefined ? bookingData.finalPrice.toFixed(2) : bookingData.totalPrice}
+                      ${bookingData.finalPrice !== undefined ? bookingData.finalPrice.toFixed(2) : bookingData.totalPrice.toFixed(2)}
                     </div>
                   </div>
                 </div>

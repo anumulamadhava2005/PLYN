@@ -85,7 +85,7 @@ const SalonCard: React.FC<SalonCardProps> = ({
           <h3 className="font-semibold text-lg">{name}</h3>
           <div className="flex items-center">
             <Star className="w-4 h-4 fill-salon-men dark:fill-salon-men-light text-salon-men dark:text-salon-men-light mr-1" />
-            <span>{rating.toFixed(1)}</span>
+            <span>{typeof rating === 'number' ? rating.toFixed(1) : rating}</span>
             <span className="text-muted-foreground text-xs ml-1">({reviewCount})</span>
           </div>
         </div>

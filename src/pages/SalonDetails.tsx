@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Calendar, Clock, CheckCircle, ArrowRight } from 'lucide-react';
+import { Calendar, Clock, CheckCircle, ArrowRight, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/components/ui/use-toast';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
@@ -14,155 +14,36 @@ import PageTransition from '@/components/transitions/PageTransition';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
+import { toast } from 'sonner';
 
-const mockSalonData = {
-  "1": {
-    id: "1",
-    name: "Modern Cuts",
-    rating: 4.8,
-    reviewCount: 204,
-    address: "123 Broadway St, New York, NY",
-    distance: "0.8 mi",
-    image: "https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&q=80",
-    description: "Modern Cuts is a premium salon offering top-notch services for men. Our skilled barbers provide expert haircuts, beard trims, and grooming services in a stylish and relaxed environment.",
-    services: [
-      { id: "s1", name: "Men's Haircut", price: 35, duration: 30, description: "Classic or modern haircut tailored to your style" },
-      { id: "s2", name: "Beard Trim", price: 15, duration: 15, description: "Precise beard trimming and shaping" },
-      { id: "s3", name: "Hair Wash & Style", price: 25, duration: 20, description: "Thorough wash with styling" },
-      { id: "s4", name: "Hot Towel Shave", price: 30, duration: 25, description: "Traditional hot towel shave for a smooth finish" },
-      { id: "s5", name: "Hair Coloring", price: 60, duration: 60, description: "Professional hair coloring services" }
-    ],
-    openingTime: "9:00 AM",
-    closingTime: "7:00 PM",
-    type: "men"
-  },
-  "2": {
-    id: "2",
-    name: "Elegance Hair Studio",
-    rating: 4.6,
-    reviewCount: 178,
-    address: "456 5th Avenue, New York, NY",
-    distance: "1.2 mi",
-    image: "https://images.unsplash.com/photo-1560066984-138dadb4c035?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&q=80",
-    description: "Elegance Hair Studio specializes in women's hair services, offering everything from trendy cuts to stunning coloring and styling. Our expert stylists are committed to enhancing your natural beauty.",
-    services: [
-      { id: "s6", name: "Women's Haircut", price: 55, duration: 45, description: "Precision cut with style consultation" },
-      { id: "s7", name: "Blow Dry & Style", price: 40, duration: 30, description: "Professional blow dry with styling" },
-      { id: "s8", name: "Hair Coloring", price: 95, duration: 90, description: "Full hair coloring with premium products" },
-      { id: "s9", name: "Deep Conditioning", price: 35, duration: 30, description: "Intensive hair treatment for damaged hair" },
-      { id: "s10", name: "Updo", price: 70, duration: 60, description: "Elegant updo styling for special occasions" }
-    ],
-    openingTime: "8:00 AM",
-    closingTime: "8:00 PM",
-    type: "women"
-  },
-  "3": {
-    id: "3",
-    name: "The Barber Room",
-    rating: 4.9,
-    reviewCount: 312,
-    address: "789 Washington St, New York, NY",
-    distance: "0.5 mi",
-    image: "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&q=80",
-    description: "The Barber Room provides exceptional grooming services for men in a classic barbershop atmosphere with modern amenities. Our master barbers take pride in delivering precision cuts and immaculate service.",
-    services: [
-      { id: "s11", name: "Premium Haircut", price: 45, duration: 40, description: "Premium haircut with hot towel refresh" },
-      { id: "s12", name: "Beard Styling", price: 25, duration: 20, description: "Expert beard shaping and styling" },
-      { id: "s13", name: "Full Service", price: 65, duration: 60, description: "Complete package: haircut, beard trim, and styling" },
-      { id: "s14", name: "Kid's Haircut", price: 25, duration: 20, description: "Gentle haircuts for children" },
-      { id: "s15", name: "Senior's Cut", price: 30, duration: 30, description: "Specialized service for senior gentlemen" }
-    ],
-    openingTime: "10:00 AM",
-    closingTime: "9:00 PM",
-    type: "men"
-  },
-  "4": {
-    id: "4",
-    name: "Beauty & Beyond",
-    rating: 4.7,
-    reviewCount: 156,
-    address: "321 Madison Ave, New York, NY",
-    distance: "1.5 mi",
-    image: "https://images.unsplash.com/photo-1562322140-8baeececf3df?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&q=80",
-    description: "Beauty & Beyond is a luxury salon specializing in women's beauty services. From premium haircuts to manicures and facials, our expert staff provides a comprehensive range of treatments.",
-    services: [
-      { id: "s16", name: "Women's Cut & Style", price: 60, duration: 50, description: "Expert cut and professional styling" },
-      { id: "s17", name: "Manicure", price: 35, duration: 30, description: "Classic manicure with polish" },
-      { id: "s18", name: "Pedicure", price: 45, duration: 40, description: "Relaxing pedicure with polish" },
-      { id: "s19", name: "Facial", price: 75, duration: 60, description: "Rejuvenating facial treatment" },
-      { id: "s20", name: "Hair Treatment", price: 55, duration: 45, description: "Nourishing hair treatment" }
-    ],
-    openingTime: "9:00 AM",
-    closingTime: "7:00 PM",
-    type: "women"
-  },
-  "5": {
-    id: "5",
-    name: "Unisex Style Studio",
-    rating: 4.5,
-    reviewCount: 124,
-    address: "555 Lexington Ave, New York, NY",
-    distance: "0.9 mi",
-    image: "https://images.unsplash.com/photo-1493256338651-d82f7acb2b38?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&q=80",
-    description: "Unisex Style Studio welcomes all clients seeking quality hair services. Our versatile stylists are skilled in a wide range of cutting and styling techniques for all hair types and preferences.",
-    services: [
-      { id: "s21", name: "Men's Haircut", price: 40, duration: 35, description: "Professional men's haircut" },
-      { id: "s22", name: "Women's Haircut", price: 55, duration: 45, description: "Professional women's haircut" },
-      { id: "s23", name: "Styling", price: 35, duration: 30, description: "Hair styling without cut" },
-      { id: "s24", name: "Color Treatment", price: 85, duration: 90, description: "Professional color service" },
-      { id: "s25", name: "Children's Cut", price: 30, duration: 25, description: "Haircuts for children under 12" }
-    ],
-    openingTime: "8:30 AM",
-    closingTime: "8:30 PM",
-    type: "unisex"
-  },
-  "6": {
-    id: "6",
-    name: "The Hair Lounge",
-    rating: 4.4,
-    reviewCount: 98,
-    address: "888 Park Ave, New York, NY",
-    distance: "2.1 mi",
-    image: "https://images.unsplash.com/photo-1500840216050-6ffa99d75160?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&q=80",
-    description: "The Hair Lounge offers a premium salon experience with a focus on cutting-edge styles and techniques. Our talented team specializes in hair transformations that boost confidence and enhance your natural beauty.",
-    services: [
-      { id: "s26", name: "Premium Cut", price: 50, duration: 45, description: "High-end cutting service" },
-      { id: "s27", name: "Hair Treatment", price: 70, duration: 60, description: "Specialized treatment for damaged hair" },
-      { id: "s28", name: "Bridal Styling", price: 120, duration: 120, description: "Complete bridal hair service" },
-      { id: "s29", name: "Extensions", price: 200, duration: 180, description: "Professional hair extension service" },
-      { id: "s30", name: "Balayage", price: 150, duration: 150, description: "Custom balayage coloring technique" }
-    ],
-    openingTime: "10:00 AM",
-    closingTime: "6:00 PM",
-    type: "unisex"
-  }
-};
-
-const generateTimeSlots = () => {
-  const slots = [];
-  const startHour = 9;
-  const endHour = 19;
-  
-  for (let hour = startHour; hour < endHour; hour++) {
-    for (let minute = 0; minute < 60; minute += 30) {
-      slots.push({
-        id: `slot-${hour}-${minute}`,
-        time: `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`,
-        available: Math.random() > 0.3
-      });
-    }
-  }
-  
-  return slots;
-};
+interface Salon {
+  id: string;
+  name: string;
+  rating: number;
+  reviewCount: number;
+  address: string;
+  distance: string;
+  image: string;
+  description: string;
+  services: {
+    id: string;
+    name: string;
+    price: number;
+    duration: number;
+    description: string;
+  }[];
+  openingTime: string;
+  closingTime: string;
+  type: 'men' | 'women' | 'unisex';
+}
 
 const SalonDetails = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { toast } = useToast();
+  const { toast: uiToast } = useToast();
   const { user } = useAuth();
   
-  const [salon, setSalon] = useState<any>(null);
+  const [salon, setSalon] = useState<Salon | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [timeSlots, setTimeSlots] = useState<any[]>([]);
@@ -172,20 +53,139 @@ const SalonDetails = () => {
   
   useEffect(() => {
     if (id) {
-      const salonData = mockSalonData[id as keyof typeof mockSalonData];
-      if (salonData) {
-        setSalon(salonData);
-      } else {
-        toast({
-          title: "Salon not found",
-          description: "We couldn't find details for this salon.",
-          variant: "destructive",
-        });
-        navigate('/book-now');
+      fetchSalonDetails();
+    }
+  }, [id]);
+  
+  const fetchSalonDetails = async () => {
+    setLoading(true);
+    try {
+      // Fetch merchant data from Supabase
+      const { data: merchantData, error } = await supabase
+        .from('merchants')
+        .select('*')
+        .eq('id', id)
+        .single();
+      
+      if (error) {
+        throw error;
       }
+      
+      if (!merchantData) {
+        toast.error("Salon not found");
+        navigate('/book-now');
+        return;
+      }
+      
+      // Transform merchant data to salon format with required fields
+      const salonData: Salon = {
+        id: merchantData.id,
+        name: merchantData.business_name,
+        rating: (4 + Math.random()).toFixed(1) as unknown as number, // Random rating between 4.0 and 5.0
+        reviewCount: Math.floor(Math.random() * 300) + 50, // Random review count
+        address: merchantData.business_address,
+        distance: (Math.random() * 5).toFixed(1) + " mi", // Random distance
+        image: getRandomSalonImage(merchantData.service_category),
+        description: `${merchantData.business_name} is a premium salon offering top-notch services. Our skilled professionals provide expert services in a stylish and relaxed environment.`,
+        services: generateRandomServices(merchantData.service_category),
+        openingTime: "9:00 AM", // Default
+        closingTime: "7:00 PM", // Default
+        type: getSalonType(merchantData.service_category)
+      };
+      
+      setSalon(salonData);
+    } catch (error) {
+      console.error('Error fetching salon details:', error);
+      toast.error("Failed to load salon details");
+      navigate('/book-now');
+    } finally {
       setLoading(false);
     }
-  }, [id, navigate, toast]);
+  };
+  
+  // Helper function to generate random services based on salon type
+  const generateRandomServices = (category: string) => {
+    const services = [];
+    const serviceCount = Math.floor(Math.random() * 3) + 3; // 3-5 services
+    
+    if (category.toLowerCase().includes('barber') || category.toLowerCase().includes('men')) {
+      services.push({ id: "s1", name: "Men's Haircut", price: 30 + Math.floor(Math.random() * 20), duration: 30, description: "Classic or modern haircut tailored to your style" });
+      services.push({ id: "s2", name: "Beard Trim", price: 15 + Math.floor(Math.random() * 10), duration: 15, description: "Precise beard trimming and shaping" });
+      if (serviceCount > 2) services.push({ id: "s3", name: "Hair Wash & Style", price: 20 + Math.floor(Math.random() * 10), duration: 20, description: "Thorough wash with styling" });
+      if (serviceCount > 3) services.push({ id: "s4", name: "Hot Towel Shave", price: 25 + Math.floor(Math.random() * 15), duration: 25, description: "Traditional hot towel shave for a smooth finish" });
+      if (serviceCount > 4) services.push({ id: "s5", name: "Hair Coloring", price: 40 + Math.floor(Math.random() * 30), duration: 60, description: "Professional hair coloring services" });
+    } else if (category.toLowerCase().includes('salon') || category.toLowerCase().includes('women')) {
+      services.push({ id: "s6", name: "Women's Haircut", price: 45 + Math.floor(Math.random() * 30), duration: 45, description: "Precision cut with style consultation" });
+      services.push({ id: "s7", name: "Blow Dry & Style", price: 35 + Math.floor(Math.random() * 15), duration: 30, description: "Professional blow dry with styling" });
+      if (serviceCount > 2) services.push({ id: "s8", name: "Hair Coloring", price: 80 + Math.floor(Math.random() * 40), duration: 90, description: "Full hair coloring with premium products" });
+      if (serviceCount > 3) services.push({ id: "s9", name: "Deep Conditioning", price: 30 + Math.floor(Math.random() * 15), duration: 30, description: "Intensive hair treatment for damaged hair" });
+      if (serviceCount > 4) services.push({ id: "s10", name: "Manicure", price: 25 + Math.floor(Math.random() * 15), duration: 45, description: "Classic manicure with polish" });
+    } else {
+      // Unisex or other categories
+      services.push({ id: "s11", name: "Haircut", price: 40 + Math.floor(Math.random() * 20), duration: 40, description: "Expert cut for all hair types" });
+      services.push({ id: "s12", name: "Styling", price: 30 + Math.floor(Math.random() * 15), duration: 30, description: "Professional styling without cutting" });
+      if (serviceCount > 2) services.push({ id: "s13", name: "Color Treatment", price: 70 + Math.floor(Math.random() * 30), duration: 90, description: "Professional color service" });
+      if (serviceCount > 3) services.push({ id: "s14", name: "Hair Treatment", price: 50 + Math.floor(Math.random() * 20), duration: 60, description: "Nourishing hair treatment" });
+      if (serviceCount > 4) services.push({ id: "s15", name: "Kid's Haircut", price: 20 + Math.floor(Math.random() * 10), duration: 20, description: "Gentle haircuts for children" });
+    }
+    
+    return services;
+  };
+
+  // Helper function to get salon type based on service category
+  const getSalonType = (category: string): 'men' | 'women' | 'unisex' => {
+    if (category.toLowerCase().includes('barber') || category.toLowerCase().includes('men')) {
+      return 'men';
+    } else if (category.toLowerCase().includes('women')) {
+      return 'women';
+    } else {
+      return 'unisex';
+    }
+  };
+
+  // Helper function to get random salon image
+  const getRandomSalonImage = (category: string) => {
+    const menSalonImages = [
+      "https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&q=80",
+    ];
+    
+    const womenSalonImages = [
+      "https://images.unsplash.com/photo-1560066984-138dadb4c035?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1562322140-8baeececf3df?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&q=80",
+    ];
+    
+    const unisexSalonImages = [
+      "https://images.unsplash.com/photo-1493256338651-d82f7acb2b38?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1500840216050-6ffa99d75160?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&q=80",
+    ];
+    
+    if (category.toLowerCase().includes('barber') || category.toLowerCase().includes('men')) {
+      return menSalonImages[Math.floor(Math.random() * menSalonImages.length)];
+    } else if (category.toLowerCase().includes('women')) {
+      return womenSalonImages[Math.floor(Math.random() * womenSalonImages.length)];
+    } else {
+      return unisexSalonImages[Math.floor(Math.random() * unisexSalonImages.length)];
+    }
+  };
+
+  const generateTimeSlots = () => {
+    const slots = [];
+    const startHour = 9;
+    const endHour = 19;
+    
+    for (let hour = startHour; hour < endHour; hour++) {
+      for (let minute = 0; minute < 60; minute += 30) {
+        slots.push({
+          id: `slot-${hour}-${minute}`,
+          time: `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`,
+          available: Math.random() > 0.3
+        });
+      }
+    }
+    
+    return slots;
+  };
   
   useEffect(() => {
     if (selectedDate) {
@@ -208,20 +208,20 @@ const SalonDetails = () => {
   const calculateTotalPrice = () => {
     if (!salon) return 0;
     return salon.services
-      .filter((service: any) => selectedServices.includes(service.id))
-      .reduce((total: number, service: any) => total + service.price, 0);
+      .filter((service) => selectedServices.includes(service.id))
+      .reduce((total, service) => total + service.price, 0);
   };
   
   const calculateTotalDuration = () => {
     if (!salon) return 0;
     return salon.services
-      .filter((service: any) => selectedServices.includes(service.id))
-      .reduce((total: number, service: any) => total + service.duration, 0);
+      .filter((service) => selectedServices.includes(service.id))
+      .reduce((total, service) => total + service.duration, 0);
   };
   
   const handleProceedToPayment = async () => {
     if (!user) {
-      toast({
+      uiToast({
         title: "Authentication Required",
         description: "Please sign in to book an appointment.",
         variant: "destructive",
@@ -231,7 +231,7 @@ const SalonDetails = () => {
     }
     
     if (selectedServices.length === 0) {
-      toast({
+      uiToast({
         title: "No Services Selected",
         description: "Please select at least one service to proceed.",
         variant: "destructive",
@@ -240,7 +240,7 @@ const SalonDetails = () => {
     }
     
     if (!selectedSlot) {
-      toast({
+      uiToast({
         title: "No Time Slot Selected",
         description: "Please select a time slot for your appointment.",
         variant: "destructive",
@@ -253,10 +253,10 @@ const SalonDetails = () => {
         salonId: id,
         salonName: salon?.name,
         services: selectedServices.map(serviceId => 
-          salon?.services.find((s: any) => s.id === serviceId)
+          salon?.services.find((s) => s.id === serviceId)
         ),
         date: selectedDate,
-        timeSlot: timeSlots.find((slot: any) => slot.id === selectedSlot)?.time,
+        timeSlot: timeSlots.find((slot) => slot.id === selectedSlot)?.time,
         totalPrice: calculateTotalPrice(),
         totalDuration: calculateTotalDuration()
       } 
@@ -269,7 +269,7 @@ const SalonDetails = () => {
         <div className="min-h-screen flex flex-col">
           <Navbar />
           <main className="flex-grow pt-20 flex items-center justify-center">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div>
+            <Loader2 className="w-10 h-10 animate-spin text-primary" />
           </main>
           <Footer />
         </div>
@@ -323,7 +323,7 @@ const SalonDetails = () => {
                   <h1 className="text-3xl md:text-4xl font-bold mb-2">{salon.name}</h1>
                   <div className="flex items-center mb-4">
                     <div className="bg-yellow-400 text-yellow-900 rounded px-2 py-0.5 text-sm font-semibold mr-2">
-                      {salon.rating.toFixed(1)}
+                      {typeof salon.rating === 'number' ? salon.rating.toFixed(1) : salon.rating}
                     </div>
                     <span className="text-sm">({salon.reviewCount} reviews)</span>
                   </div>
@@ -374,8 +374,8 @@ const SalonDetails = () => {
                             <h3 className="font-medium mb-2">Selected Services</h3>
                             <ul className="space-y-2">
                               {salon.services
-                                .filter((service: any) => selectedServices.includes(service.id))
-                                .map((service: any) => (
+                                .filter((service) => selectedServices.includes(service.id))
+                                .map((service) => (
                                   <li key={service.id} className="flex justify-between text-sm">
                                     <span>{service.name}</span>
                                     <span className="font-medium">${service.price}</span>
@@ -425,7 +425,7 @@ const SalonDetails = () => {
                       services={salon.services}
                       selectedServices={selectedServices}
                       onChange={handleServiceToggle}
-                      salonType={salon.type as 'men' | 'women' | 'unisex'}
+                      salonType={salon.type}
                     />
                   </motion.div>
                   
