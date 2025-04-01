@@ -15,23 +15,26 @@ export type MerchantApplication = {
   user_profile: UserProfile | null;
 };
 
-export type DashboardStats = {
+export interface DashboardStats {
   totalMerchants: number;
   totalUsers: number;
   totalBookings: number;
-  pendingApplications: number;
+  totalCustomers: number;
+  totalRevenue: number;
+  completedBookings: number;
+  pendingBookings: number;
 };
 
 export type MerchantData = {
   id: string;
   business_name: string;
-  business_address: string;
   business_email: string;
   business_phone: string;
+  business_address: string;
   service_category: string;
   status: string;
   created_at: string;
-};
+}
 
 export type BookingStats = {
   total: number;
@@ -78,4 +81,14 @@ export interface DisplaySlot {
 export interface SlotFormData {
   startTime: string;
   endTime: string;
+}
+export interface Service {
+  id: string;
+  merchant_id: string;
+  name: string;
+  description: string;
+  price: number;
+  duration: number;
+  created_at: string;
+  updated_at: string;
 }

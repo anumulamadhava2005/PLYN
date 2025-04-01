@@ -13,6 +13,7 @@ import SlotManager from '@/components/merchant/SlotManager';
 import PageTransition from '@/components/transitions/PageTransition';
 import { format } from 'date-fns';
 import { updateBookingStatus, fetchMerchantSlots } from '@/utils/bookingUtils';
+import MerchantServices from '@/components/merchant/MerchantServices';
 
 const MerchantDashboard = () => {
   const [searchParams] = useSearchParams();
@@ -21,6 +22,7 @@ const MerchantDashboard = () => {
   const [merchantData, setMerchantData] = useState<any>(null);
   const [slots, setSlots] = useState<any[]>([]);
   const [bookings, setBookings] = useState<any[]>([]);
+  const [userProfiles, setUserProfiles] = useState<Record<string, any>>({});
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -117,10 +119,7 @@ const MerchantDashboard = () => {
       // Load bookings data
       const { data: bookingsData, error: bookingsError } = await supabase
         .from('bookings')
-        .select(`
-          *,
-          user_profile:profiles(username, phone_number)
-        `)
+        .select('*')
         .eq('merchant_id', user.id);
 
       if (bookingsError) {
@@ -130,9 +129,69 @@ const MerchantDashboard = () => {
           description: "Could not load your bookings. Please try again.",
           variant: "destructive",
         });
-      } else {
-        setBookings(bookingsData || []);
+        return;
       }
+      const userProfileIds = bookingsData?.map(booking => booking.user_id).filter(Boolean) || [];
+      
+      // Fetch user profiles separately if there are any profile IDs
+      const uniqueUserProfileIds = [...new Set(userProfileIds)];
+      
+      // Create a profiles map to store user profile data
+      let profilesMap: Record<string, any> = {};
+      
+      // Only fetch profiles if there are user profile IDs
+      if (uniqueUserProfileIds.length > 0) {
+        console.log("Fetching profiles for IDs:", uniqueUserProfileIds);
+        
+        const uniqueUserProfileIdsArray = uniqueUserProfileIds.map(String);
+        console.log("Unique user profile IDs array:", uniqueUserProfileIdsArray);
+
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, username, phone_number')
+          .eq('id', uniqueUserProfileIdsArray[0]);
+
+        if (profilesError) {
+          console.error("Error fetching profiles:", profilesError);
+        } else {
+          console.log("Fetched profiles:", profilesData);
+        }
+
+          
+        if (profilesError) {
+          console.error("Error loading profiles data:", profilesError);
+          toast({
+            title: "Data Error",
+            description: "Could not load customer profiles. Some customer names may be missing.",
+            variant: "destructive",
+          });
+        } else {
+          // Create a map of profiles by ID for easy lookup
+          profilesMap = (profilesData || []).reduce((acc, profile) => {
+            acc[profile.id] = profile;
+            return acc;
+          }, {} as Record<string, any>);
+          console.log("Profiles map:", profilesMap);
+          
+          console.log("Profiles map created:", profilesMap);
+        }
+      }
+      
+      // Set the profiles map first
+      setUserProfiles(profilesMap);
+      
+      
+      // Merge bookings with profiles data
+      const enhancedBookings = (bookingsData || []).map(booking => {
+        const userProfile = booking.user_id ? profilesMap[booking.user_id] : null;
+        return {
+          ...booking,
+          profiles: userProfile
+        };
+      });
+      
+      console.log("Enhanced bookings with profiles:", enhancedBookings);
+      setBookings(enhancedBookings);
     } catch (error: any) {
       console.error("Error in loadMerchantData:", error);
       toast({
@@ -189,16 +248,12 @@ const MerchantDashboard = () => {
   // Process data for components
   const processedAppointments = bookings.map(booking => ({
     id: booking.id,
-    customerName: booking.user_profile?.username || 'Unknown User',
+    customerName: booking.profiles?.username || 'Unknown User',
     service: booking.service_name,
     date: booking.booking_date,
     time: booking.time_slot,
     duration: `${booking.service_duration || 30} min`,
-    status: (booking.status === 'confirmed'
-      ? 'confirmed'
-      : booking.status === 'cancelled'
-        ? 'cancelled'
-        : 'pending')
+    status: booking.status as 'confirmed' | 'cancelled' | 'pending'
   }));
 
   const today = new Date().toISOString().split('T')[0];
@@ -224,7 +279,6 @@ const MerchantDashboard = () => {
   return (
     <PageTransition>
       <div className="flex h-screen">
-        <MerchantSidebar />
 
         <div className="flex-1 overflow-auto p-8">
           <div className="mb-8 flex items-center justify-between">
@@ -340,8 +394,7 @@ const MerchantDashboard = () => {
             </TabsContent>
 
             <TabsContent value="services">
-              <h2 className="text-xl font-semibold mb-4">Your Services</h2>
-              <p>Service management coming soon...</p>
+              <MerchantServices merchantId={user?.id || ''} />
             </TabsContent>
 
             <TabsContent value="settings">

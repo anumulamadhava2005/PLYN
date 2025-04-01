@@ -59,30 +59,57 @@ const BookNow = () => {
       }
 
       if (merchants) {
-        // Transform merchant data to salon format
-        const salons: Salon[] = merchants.map(merchant => {
-          // Generate random services for each salon
-          // In a real app, you'd have a services table related to merchants
-          const services = generateRandomServices(merchant.service_category);
-          
-          return {
+                // Create an array to store all salon data
+                const salonsWithServices: Salon[] = [];
+        
+                // For each merchant, fetch their services
+                for (const merchant of merchants) {
+                  // Fetch the merchant's services
+                  const { data: servicesData, error: servicesError } = await supabase
+                    .from('services')
+                    .select('*')
+                    .eq('merchant_id', merchant.id);
+                    
+                  if (servicesError) {
+                    console.error(`Error fetching services for merchant ${merchant.id}:`, servicesError);
+                    // Continue with the next merchant if there's an error
+                    continue;
+                  }
+                  
+                  // Transform services data to the required format
+                  const services = (servicesData || []).map(service => ({
+                    name: service.name,
+                    price: service.price,
+                    duration: service.duration
+                  }));
+                  
+                  // If no services, provide some defaults (in a real app, you might skip merchants with no services)
+                  const finalServices = services.length > 0 ? services : 
+                    getSalonType(merchant.service_category) === 'men' ? 
+                      [{ name: "Men's Haircut", price: 35, duration: 30 }] : 
+                      getSalonType(merchant.service_category) === 'women' ? 
+                        [{ name: "Women's Haircut", price: 55, duration: 45 }] : 
+                        [{ name: "Haircut", price: 45, duration: 40 }];
+                  
+                  // Create the salon object with the real services data
+                  salonsWithServices.push({
             id: merchant.id,
             name: merchant.business_name,
-            rating: (4 + Math.random()).toFixed(1), // Random rating between 4.0 and 5.0
+            rating: parseFloat((4 + Math.random()).toFixed(1)), // Random rating between 4.0 and 5.0
             review_count: Math.floor(Math.random() * 300) + 50, // Random review count
             address: merchant.business_address,
             distance: (Math.random() * 5).toFixed(1) + " mi", // Random distance
             image_url: getRandomSalonImage(merchant.service_category),
-            services: services,
+            services: finalServices,
             opening_time: "9:00 AM", // Default
             closing_time: "7:00 PM", // Default
             featured: Math.random() > 0.7, // 30% chance of being featured
             type: getSalonType(merchant.service_category)
-          };
-        });
+          });
+        }
 
-        setAllSalons(salons);
-        setFilteredSalons(salons);
+        setAllSalons(salonsWithServices);
+        setFilteredSalons(salonsWithServices);
       }
     } catch (error) {
       console.error('Error fetching salons:', error);
@@ -90,35 +117,6 @@ const BookNow = () => {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  // Helper function to generate random services based on salon type
-  const generateRandomServices = (category: string) => {
-    const services = [];
-    const serviceCount = Math.floor(Math.random() * 3) + 3; // 3-5 services
-    
-    if (category.toLowerCase().includes('barber') || category.toLowerCase().includes('men')) {
-      services.push({ name: "Men's Haircut", price: 30 + Math.floor(Math.random() * 20), duration: 30 });
-      services.push({ name: "Beard Trim", price: 15 + Math.floor(Math.random() * 10), duration: 15 });
-      if (serviceCount > 2) services.push({ name: "Hair Wash & Style", price: 20 + Math.floor(Math.random() * 10), duration: 20 });
-      if (serviceCount > 3) services.push({ name: "Hot Towel Shave", price: 25 + Math.floor(Math.random() * 15), duration: 25 });
-      if (serviceCount > 4) services.push({ name: "Hair Coloring", price: 40 + Math.floor(Math.random() * 30), duration: 60 });
-    } else if (category.toLowerCase().includes('salon') || category.toLowerCase().includes('women')) {
-      services.push({ name: "Women's Haircut", price: 45 + Math.floor(Math.random() * 30), duration: 45 });
-      services.push({ name: "Blow Dry & Style", price: 35 + Math.floor(Math.random() * 15), duration: 30 });
-      if (serviceCount > 2) services.push({ name: "Hair Coloring", price: 80 + Math.floor(Math.random() * 40), duration: 90 });
-      if (serviceCount > 3) services.push({ name: "Deep Conditioning", price: 30 + Math.floor(Math.random() * 15), duration: 30 });
-      if (serviceCount > 4) services.push({ name: "Manicure", price: 25 + Math.floor(Math.random() * 15), duration: 45 });
-    } else {
-      // Unisex or other categories
-      services.push({ name: "Haircut", price: 40 + Math.floor(Math.random() * 20), duration: 40 });
-      services.push({ name: "Styling", price: 30 + Math.floor(Math.random() * 15), duration: 30 });
-      if (serviceCount > 2) services.push({ name: "Color Treatment", price: 70 + Math.floor(Math.random() * 30), duration: 90 });
-      if (serviceCount > 3) services.push({ name: "Hair Treatment", price: 50 + Math.floor(Math.random() * 20), duration: 60 });
-      if (serviceCount > 4) services.push({ name: "Kid's Haircut", price: 20 + Math.floor(Math.random() * 10), duration: 20 });
-    }
-    
-    return services;
   };
 
   // Helper function to get salon type based on service category

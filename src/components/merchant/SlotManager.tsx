@@ -4,13 +4,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Calendar, Clock, Plus, X, Loader2 } from 'lucide-react';
-import { format, addDays } from 'date-fns';
+import { Calendar, Clock, Plus, X, Loader2, RefreshCw } from 'lucide-react';
+import { format, addDays, parseISO } from 'date-fns';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { TimeSlot, SlotFormData, DisplaySlot } from '@/types/admin';
+import { createDynamicTimeSlots } from '@/utils/bookingUtils';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export interface SlotManagerProps {
   merchantId: string;
@@ -33,6 +35,8 @@ const SlotManager: React.FC<SlotManagerProps> = ({
   const [existingSlots, setExistingSlots] = useState<DisplaySlot[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isGeneratingDynamic, setIsGeneratingDynamic] = useState(false);
+  const [serviceDuration, setServiceDuration] = useState("30");
   const { toast } = useToast();
 
   useEffect(() => {
@@ -200,6 +204,60 @@ const SlotManager: React.FC<SlotManagerProps> = ({
     }
   };
 
+  const handleCreateDynamicSlots = async () => {
+    if (!merchantId) {
+      toast({
+        title: "Error",
+        description: "Merchant ID is missing",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsGeneratingDynamic(true);
+
+    try {
+      const formattedDate = format(selectedDate, 'yyyy-MM-dd');
+
+      // Get service durations from services offered by this merchant
+      const { data: servicesData, error: servicesError } = await supabase
+        .from('services')
+        .select('duration')
+        .eq('merchant_id', merchantId);
+
+      if (servicesError) throw servicesError;
+
+      // Extract unique durations
+      const serviceDurations = servicesData?.map(s => s.duration) || [parseInt(serviceDuration)];
+      const uniqueDurations = [...new Set(serviceDurations)];
+
+      // Create dynamic slots
+      const data = await createDynamicTimeSlots(merchantId, formattedDate, uniqueDurations);
+
+      toast({
+        title: "Success",
+        description: `Generated ${data.length} slots for ${format(selectedDate, 'MMMM d, yyyy')} based on your services`,
+      });
+
+      // Refresh the slots display
+      fetchExistingSlots();
+
+      // Notify parent component to refresh slots if callback provided
+      if (onSlotsUpdated) {
+        onSlotsUpdated();
+      }
+    } catch (error: any) {
+      console.error('Error creating dynamic slots:', error);
+      toast({
+        title: "Failed to generate slots",
+        description: error.message || "An unexpected error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingDynamic(false);
+    }
+  };
+
   const calculateDuration = (startTime: string, endTime: string): number => {
     const [startHour, startMinute] = startTime.split(':').map(Number);
     const [endHour, endMinute] = endTime.split(':').map(Number);
@@ -244,8 +302,49 @@ const SlotManager: React.FC<SlotManagerProps> = ({
             </div>
           </div>
 
+          <div className="space-y-2 p-4 bg-background/5 rounded-md">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium">Generate Dynamic Slots</h3>
+              <div className="w-1/3">
+                <Select
+                  value={serviceDuration}
+                  onValueChange={setServiceDuration}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Duration" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="30">30 min</SelectItem>
+                    <SelectItem value="45">45 min</SelectItem>
+                    <SelectItem value="60">60 min</SelectItem>
+                    <SelectItem value="90">90 min</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">Create slots from 9:00 AM to 5:00 PM based on your services</p>
+            <Button
+              variant="secondary"
+              className="w-full"
+              onClick={handleCreateDynamicSlots}
+              disabled={isGeneratingDynamic}
+            >
+              {isGeneratingDynamic ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Calendar className="h-4 w-4 mr-2" />
+                  Generate Working Hours (9AM-5PM)
+                </>
+              )}
+            </Button>
+          </div>
+
           <div className="space-y-4">
-            <Label className="block">Time Slots</Label>
+            <Label className="block">Custom Time Slots</Label>
             {timeSlots.map((slot, index) => (
               <div key={index} className="flex items-center space-x-2">
                 <div className="flex-1 space-y-2">
@@ -289,7 +388,7 @@ const SlotManager: React.FC<SlotManagerProps> = ({
               onClick={addTimeSlot}
             >
               <Plus className="h-4 w-4 mr-2" />
-              Add Time Slot
+              Add Custom Time Slot
             </Button>
           </div>
 
@@ -303,14 +402,22 @@ const SlotManager: React.FC<SlotManagerProps> = ({
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 Creating Slots...
               </>
-            ) : 'Create Slots'}
+            ) : 'Create Custom Slots'}
           </Button>
         </CardContent>
       </Card>
 
       <Card className="bg-black/80 border-border/20">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Existing Slots for {format(selectedDate, 'MMMM d, yyyy')}</CardTitle>
+          <Button 
+            variant="outline" 
+            size="icon" 
+            onClick={fetchExistingSlots}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+          </Button>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -323,8 +430,8 @@ const SlotManager: React.FC<SlotManagerProps> = ({
                 <div
                   key={slot.id}
                   className={`p-3 rounded-md flex justify-between items-center ${slot.status === 'booked'
-                      ? 'bg-red-900/20 border border-red-500/30'
-                      : 'bg-green-900/20 border border-green-500/30'
+                    ? 'bg-red-900/20 border border-red-500/30'
+                    : 'bg-green-900/20 border border-green-500/30'
                     }`}
                 >
                   <div className="flex items-center">

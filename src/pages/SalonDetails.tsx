@@ -1,55 +1,37 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Calendar, Clock, CheckCircle, ArrowRight, Loader2 } from 'lucide-react';
-import { format } from 'date-fns';
-import { useToast } from '@/components/ui/use-toast';
-import { Calendar as CalendarComponent } from '@/components/ui/calendar';
-import { AnimatedButton } from '@/components/ui/AnimatedButton';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import ServiceSelector from '@/components/booking/ServiceSelector';
-import Navbar from '@/components/layout/Navbar';
-import Footer from '@/components/layout/Footer';
-import PageTransition from '@/components/transitions/PageTransition';
-import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { Calendar } from '@/components/ui/calendar';
+import { format } from 'date-fns';
+import { CalendarIcon, Clock, MapPin, Phone, Mail, Star, ChevronLeft } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useAuth } from '@/context/AuthContext';
-import { toast } from 'sonner';
-
-interface Salon {
-  id: string;
-  name: string;
-  rating: number;
-  reviewCount: number;
-  address: string;
-  distance: string;
-  image: string;
-  description: string;
-  services: {
-    id: string;
-    name: string;
-    price: number;
-    duration: number;
-    description: string;
-  }[];
-  openingTime: string;
-  closingTime: string;
-  type: 'men' | 'women' | 'unisex';
-}
+import { showBookingSuccessNotification } from '@/components/booking/BookingSuccessNotification';
+import PageTransition from '@/components/transitions/PageTransition';
 
 const SalonDetails = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { toast: uiToast } = useToast();
+  const { toast } = useToast();
   const { user } = useAuth();
   
-  const [salon, setSalon] = useState<Salon | null>(null);
+  const [salon, setSalon] = useState<any>(null);
+  const [services, setServices] = useState<any[]>([]);
+  const [selectedService, setSelectedService] = useState<any>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
-  const [selectedServices, setSelectedServices] = useState<string[]>([]);
-  const [timeSlots, setTimeSlots] = useState<any[]>([]);
-  const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [fetchingSlots, setFetchingSlots] = useState(false);
+  const [availableSlots, setAvailableSlots] = useState<any[]>([]);
+  const [selectedSlot, setSelectedSlot] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isBooking, setIsBooking] = useState(false);
+  const [activeTab, setActiveTab] = useState('services');
   
   useEffect(() => {
     if (id) {
@@ -57,468 +39,408 @@ const SalonDetails = () => {
     }
   }, [id]);
   
+  useEffect(() => {
+    if (selectedService && selectedDate) {
+      fetchAvailableSlots();
+    } else {
+      setAvailableSlots([]);
+    }
+  }, [selectedService, selectedDate]);
+  
   const fetchSalonDetails = async () => {
-    setLoading(true);
     try {
-      // Fetch merchant data from Supabase
-      const { data: merchantData, error } = await supabase
+      setIsLoading(true);
+      
+      const { data: merchantData, error: merchantError } = await supabase
         .from('merchants')
         .select('*')
         .eq('id', id)
         .single();
+        
+      if (merchantError) throw merchantError;
       
-      if (error) {
-        throw error;
-      }
+      setSalon(merchantData);
       
-      if (!merchantData) {
-        toast.error("Salon not found");
-        navigate('/book-now');
-        return;
-      }
+      const { data: servicesData, error: servicesError } = await supabase
+        .from('services')
+        .select('*')
+        .eq('merchant_id', id);
+        
+      if (servicesError) throw servicesError;
       
-      // Transform merchant data to salon format with required fields
-      const salonData: Salon = {
-        id: merchantData.id,
-        name: merchantData.business_name,
-        rating: (4 + Math.random()).toFixed(1) as unknown as number, // Random rating between 4.0 and 5.0
-        reviewCount: Math.floor(Math.random() * 300) + 50, // Random review count
-        address: merchantData.business_address,
-        distance: (Math.random() * 5).toFixed(1) + " mi", // Random distance
-        image: getRandomSalonImage(merchantData.service_category),
-        description: `${merchantData.business_name} is a premium salon offering top-notch services. Our skilled professionals provide expert services in a stylish and relaxed environment.`,
-        services: generateRandomServices(merchantData.service_category),
-        openingTime: "9:00 AM", // Default
-        closingTime: "7:00 PM", // Default
-        type: getSalonType(merchantData.service_category)
-      };
-      
-      setSalon(salonData);
-    } catch (error) {
+      setServices(servicesData || []);
+    } catch (error: any) {
       console.error('Error fetching salon details:', error);
-      toast.error("Failed to load salon details");
-      navigate('/book-now');
+      toast({
+        title: 'Error',
+        description: 'Failed to load salon details. Please try again.',
+        variant: 'destructive',
+      });
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
   
-  // Helper function to generate random services based on salon type
-  const generateRandomServices = (category: string) => {
-    const services = [];
-    const serviceCount = Math.floor(Math.random() * 3) + 3; // 3-5 services
+  const fetchAvailableSlots = async () => {
+    if (!id || !selectedDate || !selectedService) return;
     
-    if (category.toLowerCase().includes('barber') || category.toLowerCase().includes('men')) {
-      services.push({ id: "s1", name: "Men's Haircut", price: 30 + Math.floor(Math.random() * 20), duration: 30, description: "Classic or modern haircut tailored to your style" });
-      services.push({ id: "s2", name: "Beard Trim", price: 15 + Math.floor(Math.random() * 10), duration: 15, description: "Precise beard trimming and shaping" });
-      if (serviceCount > 2) services.push({ id: "s3", name: "Hair Wash & Style", price: 20 + Math.floor(Math.random() * 10), duration: 20, description: "Thorough wash with styling" });
-      if (serviceCount > 3) services.push({ id: "s4", name: "Hot Towel Shave", price: 25 + Math.floor(Math.random() * 15), duration: 25, description: "Traditional hot towel shave for a smooth finish" });
-      if (serviceCount > 4) services.push({ id: "s5", name: "Hair Coloring", price: 40 + Math.floor(Math.random() * 30), duration: 60, description: "Professional hair coloring services" });
-    } else if (category.toLowerCase().includes('salon') || category.toLowerCase().includes('women')) {
-      services.push({ id: "s6", name: "Women's Haircut", price: 45 + Math.floor(Math.random() * 30), duration: 45, description: "Precision cut with style consultation" });
-      services.push({ id: "s7", name: "Blow Dry & Style", price: 35 + Math.floor(Math.random() * 15), duration: 30, description: "Professional blow dry with styling" });
-      if (serviceCount > 2) services.push({ id: "s8", name: "Hair Coloring", price: 80 + Math.floor(Math.random() * 40), duration: 90, description: "Full hair coloring with premium products" });
-      if (serviceCount > 3) services.push({ id: "s9", name: "Deep Conditioning", price: 30 + Math.floor(Math.random() * 15), duration: 30, description: "Intensive hair treatment for damaged hair" });
-      if (serviceCount > 4) services.push({ id: "s10", name: "Manicure", price: 25 + Math.floor(Math.random() * 15), duration: 45, description: "Classic manicure with polish" });
-    } else {
-      // Unisex or other categories
-      services.push({ id: "s11", name: "Haircut", price: 40 + Math.floor(Math.random() * 20), duration: 40, description: "Expert cut for all hair types" });
-      services.push({ id: "s12", name: "Styling", price: 30 + Math.floor(Math.random() * 15), duration: 30, description: "Professional styling without cutting" });
-      if (serviceCount > 2) services.push({ id: "s13", name: "Color Treatment", price: 70 + Math.floor(Math.random() * 30), duration: 90, description: "Professional color service" });
-      if (serviceCount > 3) services.push({ id: "s14", name: "Hair Treatment", price: 50 + Math.floor(Math.random() * 20), duration: 60, description: "Nourishing hair treatment" });
-      if (serviceCount > 4) services.push({ id: "s15", name: "Kid's Haircut", price: 20 + Math.floor(Math.random() * 10), duration: 20, description: "Gentle haircuts for children" });
-    }
-    
-    return services;
-  };
-
-  // Helper function to get salon type based on service category
-  const getSalonType = (category: string): 'men' | 'women' | 'unisex' => {
-    if (category.toLowerCase().includes('barber') || category.toLowerCase().includes('men')) {
-      return 'men';
-    } else if (category.toLowerCase().includes('women')) {
-      return 'women';
-    } else {
-      return 'unisex';
+    try {
+      const formattedDate = format(selectedDate, 'yyyy-MM-dd');
+      
+      const { data, error } = await supabase
+        .from('slots')
+        .select('*')
+        .eq('merchant_id', id)
+        .eq('date', formattedDate)
+        .eq('is_booked', false);
+        
+      if (error) throw error;
+      
+      setAvailableSlots(data || []);
+    } catch (error: any) {
+      console.error('Error fetching available slots:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load available time slots.',
+        variant: 'destructive',
+      });
     }
   };
-
-  // Helper function to get random salon image
-  const getRandomSalonImage = (category: string) => {
-    const menSalonImages = [
-      "https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&q=80",
-      "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&q=80",
-    ];
-    
-    const womenSalonImages = [
-      "https://images.unsplash.com/photo-1560066984-138dadb4c035?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&q=80",
-      "https://images.unsplash.com/photo-1562322140-8baeececf3df?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&q=80",
-    ];
-    
-    const unisexSalonImages = [
-      "https://images.unsplash.com/photo-1493256338651-d82f7acb2b38?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&q=80",
-      "https://images.unsplash.com/photo-1500840216050-6ffa99d75160?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&q=80",
-    ];
-    
-    if (category.toLowerCase().includes('barber') || category.toLowerCase().includes('men')) {
-      return menSalonImages[Math.floor(Math.random() * menSalonImages.length)];
-    } else if (category.toLowerCase().includes('women')) {
-      return womenSalonImages[Math.floor(Math.random() * womenSalonImages.length)];
-    } else {
-      return unisexSalonImages[Math.floor(Math.random() * unisexSalonImages.length)];
-    }
-  };
-
-  const generateTimeSlots = () => {
-    const slots = [];
-    const startHour = 9;
-    const endHour = 19;
-    
-    for (let hour = startHour; hour < endHour; hour++) {
-      for (let minute = 0; minute < 60; minute += 30) {
-        slots.push({
-          id: `slot-${hour}-${minute}`,
-          time: `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`,
-          available: Math.random() > 0.3
-        });
-      }
-    }
-    
-    return slots;
+  
+  const handleServiceSelect = (service: any) => {
+    setSelectedService(service);
+    setSelectedSlot(null);
+    setActiveTab('booking');
   };
   
-  useEffect(() => {
-    if (selectedDate) {
-      setFetchingSlots(true);
-      setTimeout(() => {
-        setTimeSlots(generateTimeSlots());
-        setFetchingSlots(false);
-      }, 500);
-    }
-  }, [selectedDate]);
-  
-  const handleServiceToggle = (selectedIds: string[]) => {
-    setSelectedServices(selectedIds);
+  const handleSlotSelect = (slot: any) => {
+    setSelectedSlot(slot);
   };
   
-  const handleTimeSlotSelect = (slotId: string) => {
-    setSelectedSlot(slotId);
-  };
-  
-  const calculateTotalPrice = () => {
-    if (!salon) return 0;
-    return salon.services
-      .filter((service) => selectedServices.includes(service.id))
-      .reduce((total, service) => total + service.price, 0);
-  };
-  
-  const calculateTotalDuration = () => {
-    if (!salon) return 0;
-    return salon.services
-      .filter((service) => selectedServices.includes(service.id))
-      .reduce((total, service) => total + service.duration, 0);
-  };
-  
-  const handleProceedToPayment = async () => {
+  const handleBookAppointment = async () => {
     if (!user) {
-      uiToast({
-        title: "Authentication Required",
-        description: "Please sign in to book an appointment.",
-        variant: "destructive",
+      toast({
+        title: 'Login Required',
+        description: 'Please login to book an appointment.',
+        variant: 'default',
       });
-      navigate('/auth', { state: { redirectTo: `/book/${id}` } });
+      navigate('/login', { state: { from: `/salon/${id}` } });
       return;
     }
     
-    if (selectedServices.length === 0) {
-      uiToast({
-        title: "No Services Selected",
-        description: "Please select at least one service to proceed.",
-        variant: "destructive",
+    if (!selectedService || !selectedSlot) {
+      toast({
+        title: 'Incomplete Booking',
+        description: 'Please select a service and time slot.',
+        variant: 'destructive',
       });
       return;
     }
     
-    if (!selectedSlot) {
-      uiToast({
-        title: "No Time Slot Selected",
-        description: "Please select a time slot for your appointment.",
-        variant: "destructive",
+    try {
+      setIsBooking(true);
+      
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', user.id)
+        .single();
+        
+      if (profileError) throw profileError;
+      
+      const { data: bookingData, error: bookingError } = await supabase
+        .from('bookings')
+        .insert({
+          user_id: user.id,
+          user_profile_id: profileData.id,
+          merchant_id: id || '',
+          salon_id: id || '',
+          salon_name: salon.business_name,
+          service_name: selectedService.name,
+          service_price: String(selectedService.price),
+          service_duration: selectedService.duration,
+          slot_id: selectedSlot.id,
+          booking_date: selectedSlot.date,
+          time_slot: selectedSlot.start_time,
+          status: 'pending',
+          coins_earned: 0,
+          coins_used: 0
+        })
+        .select()
+        .single();
+        
+      if (bookingError) throw bookingError;
+      
+      const { error: slotError } = await supabase
+        .from('slots')
+        .update({ is_booked: true })
+        .eq('id', selectedSlot.id);
+        
+      if (slotError) throw slotError;
+      
+      showBookingSuccessNotification({
+        salonName: salon.business_name,
+        serviceName: selectedService.name,
+        date: format(new Date(selectedSlot.date), 'MMMM d, yyyy'),
+        time: selectedSlot.start_time,
+        services: [{ name: selectedService.name, price: selectedService.price }],
+        totalPrice: selectedService.price
       });
-      return;
+      
+      setSelectedService(null);
+      setSelectedSlot(null);
+      
+      navigate('/bookings');
+    } catch (error: any) {
+      console.error('Error booking appointment:', error);
+      toast({
+        title: 'Booking Failed',
+        description: error.message || 'Failed to book appointment. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsBooking(false);
     }
-
-    navigate(`/payment`, { 
-      state: { 
-        salonId: id,
-        salonName: salon?.name,
-        services: selectedServices.map(serviceId => 
-          salon?.services.find((s) => s.id === serviceId)
-        ),
-        date: selectedDate,
-        timeSlot: timeSlots.find((slot) => slot.id === selectedSlot)?.time,
-        totalPrice: calculateTotalPrice(),
-        totalDuration: calculateTotalDuration()
-      } 
-    });
   };
-
-  if (loading) {
+  
+  if (isLoading) {
     return (
-      <PageTransition>
-        <div className="min-h-screen flex flex-col">
-          <Navbar />
-          <main className="flex-grow pt-20 flex items-center justify-center">
-            <Loader2 className="w-10 h-10 animate-spin text-primary" />
-          </main>
-          <Footer />
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin h-8 w-8 border-t-2 border-b-2 border-primary rounded-full mx-auto mb-4"></div>
+          <p>Loading salon details...</p>
         </div>
-      </PageTransition>
+      </div>
     );
   }
-
+  
   if (!salon) {
     return (
-      <PageTransition>
-        <div className="min-h-screen flex flex-col">
-          <Navbar />
-          <main className="flex-grow pt-20 flex items-center justify-center">
-            <div className="text-center">
-              <h2 className="text-2xl font-bold mb-4">Salon Not Found</h2>
-              <p className="text-muted-foreground mb-6">We couldn't find the salon you're looking for.</p>
-              <AnimatedButton variant="default" onClick={() => navigate('/book-now')}>
-                Browse Salons
-              </AnimatedButton>
-            </div>
-          </main>
-          <Footer />
-        </div>
-      </PageTransition>
+      <div className="container mx-auto px-4 py-12 text-center">
+        <h1 className="text-2xl font-bold mb-4">Salon Not Found</h1>
+        <p className="mb-6">The salon you're looking for doesn't exist or has been removed.</p>
+        <Button onClick={() => navigate('/')}>Back to Home</Button>
+      </div>
     );
   }
-
+  
   return (
     <PageTransition>
-      <div className="min-h-screen flex flex-col">
-        <Navbar />
+      <div className="container mx-auto px-4 py-8">
+        <Button 
+          variant="ghost" 
+          className="mb-6" 
+          onClick={() => navigate(-1)}
+        >
+          <ChevronLeft className="mr-2 h-4 w-4" />
+          Back
+        </Button>
         
-        <main className="flex-grow pt-20">
-          <section className="relative h-64 md:h-80 lg:h-96 overflow-hidden">
-            <div className="absolute inset-0">
-              <img 
-                src={salon.image} 
-                alt={salon.name} 
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 bg-black bg-opacity-40"></div>
-            </div>
-            <div className="absolute inset-0 flex items-center">
-              <div className="container mx-auto px-4">
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5 }}
-                  className="text-white max-w-3xl"
-                >
-                  <h1 className="text-3xl md:text-4xl font-bold mb-2">{salon.name}</h1>
-                  <div className="flex items-center mb-4">
-                    <div className="bg-yellow-400 text-yellow-900 rounded px-2 py-0.5 text-sm font-semibold mr-2">
-                      {typeof salon.rating === 'number' ? salon.rating.toFixed(1) : salon.rating}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="md:col-span-2">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+            >
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-2xl">{salon.business_name}</CardTitle>
+                  <CardDescription className="flex items-center">
+                    <MapPin className="h-4 w-4 mr-1" />
+                    {salon.business_address}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="flex items-center">
+                      <Phone className="h-4 w-4 mr-2" />
+                      <span>{salon.business_phone}</span>
                     </div>
-                    <span className="text-sm">({salon.reviewCount} reviews)</span>
+                    <div className="flex items-center">
+                      <Mail className="h-4 w-4 mr-2" />
+                      <span>{salon.business_email}</span>
+                    </div>
+                    <div className="flex items-center">
+                      <Star className="h-4 w-4 mr-2 text-yellow-500" />
+                      <span>4.8 (120 reviews)</span>
+                    </div>
                   </div>
-                  <p className="text-sm md:text-base opacity-90">{salon.address}</p>
-                </motion.div>
-              </div>
-            </div>
-          </section>
-          
-          <section className="py-8">
-            <div className="container mx-auto px-4">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-1">
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5 }}
-                    className="glass-card p-6 rounded-lg mb-6"
-                  >
-                    <h2 className="text-xl font-semibold mb-4">About {salon.name}</h2>
-                    <p className="text-muted-foreground mb-4">{salon.description}</p>
-                    
-                    <div className="border-t border-border pt-4 mt-4">
-                      <div className="flex items-start mb-3">
-                        <Clock className="w-5 h-5 mr-2 mt-0.5 text-muted-foreground" />
-                        <div>
-                          <h3 className="font-medium">Business Hours</h3>
-                          <p className="text-sm text-muted-foreground">
-                            {salon.openingTime} - {salon.closingTime}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                  
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: 0.1 }}
-                    className="sticky top-28"
-                  >
-                    <div className="glass-card p-6 rounded-lg">
-                      <h2 className="text-xl font-semibold mb-4">Booking Summary</h2>
-                      
-                      {selectedServices.length > 0 ? (
-                        <div className="space-y-4">
-                          <div>
-                            <h3 className="font-medium mb-2">Selected Services</h3>
-                            <ul className="space-y-2">
-                              {salon.services
-                                .filter((service) => selectedServices.includes(service.id))
-                                .map((service) => (
-                                  <li key={service.id} className="flex justify-between text-sm">
-                                    <span>{service.name}</span>
-                                    <span className="font-medium">${service.price}</span>
-                                  </li>
-                                ))}
-                            </ul>
-                          </div>
-                          
-                          <div className="border-t border-border pt-4">
-                            <div className="flex justify-between">
-                              <span className="font-medium">Total</span>
-                              <span className="font-bold">${calculateTotalPrice()}</span>
-                            </div>
-                            <div className="flex justify-between text-sm text-muted-foreground mt-1">
-                              <span>Duration</span>
-                              <span>{calculateTotalDuration()} min</span>
-                            </div>
-                          </div>
-                          
-                          <AnimatedButton
-                            variant={salon.type === 'men' ? 'men' : 'women'}
-                            className="w-full"
-                            onClick={handleProceedToPayment}
-                          >
-                            Proceed to Payment
-                            <ArrowRight className="ml-2 h-4 w-4" />
-                          </AnimatedButton>
-                        </div>
-                      ) : (
-                        <div className="text-center text-muted-foreground py-4">
-                          <p>Select services to see booking summary</p>
-                        </div>
-                      )}
-                    </div>
-                  </motion.div>
-                </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+            
+            <div className="mt-8">
+              <Tabs value={activeTab} onValueChange={setActiveTab}>
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="services">Services</TabsTrigger>
+                  <TabsTrigger value="booking" disabled={!selectedService}>Booking</TabsTrigger>
+                </TabsList>
                 
-                <div className="lg:col-span-2">
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5 }}
-                    className="glass-card p-6 rounded-lg mb-6"
-                  >
-                    <h2 className="text-xl font-semibold mb-4">Select Services</h2>
-                    <ServiceSelector
-                      services={salon.services}
-                      selectedServices={selectedServices}
-                      onChange={handleServiceToggle}
-                      salonType={salon.type}
-                    />
-                  </motion.div>
-                  
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: 0.1 }}
-                    className="glass-card p-6 rounded-lg"
-                  >
-                    <h2 className="text-xl font-semibold mb-4">Select Date & Time</h2>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <h3 className="font-medium mb-3">Date</h3>
-                        <div className="bg-background/40 rounded-lg p-3">
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <button
-                                className={cn(
-                                  "w-full flex items-center justify-between p-3 rounded-md border",
-                                  "text-left font-normal",
-                                  "focus:outline-none focus:ring-2 focus:ring-primary"
-                                )}
-                              >
-                                {selectedDate ? (
-                                  format(selectedDate, "PPP")
-                                ) : (
-                                  <span>Pick a date</span>
-                                )}
-                                <Calendar className="h-4 w-4 opacity-50" />
-                              </button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
-                              <CalendarComponent
-                                mode="single"
-                                selected={selectedDate}
-                                onSelect={setSelectedDate}
-                                disabled={(date) => 
-                                  date < new Date() || 
-                                  date > new Date(new Date().setDate(new Date().getDate() + 30))
-                                }
-                                initialFocus
-                                className="p-3 pointer-events-auto"
-                              />
-                            </PopoverContent>
-                          </Popover>
-                        </div>
+                <TabsContent value="services" className="mt-6">
+                  <h2 className="text-xl font-semibold mb-4">Available Services</h2>
+                  <div className="grid grid-cols-1 gap-4">
+                    {services.length > 0 ? (
+                      services.map((service) => (
+                        <Card key={service.id} className="overflow-hidden">
+                          <CardHeader className="pb-2">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <CardTitle>{service.name}</CardTitle>
+                                <CardDescription className="mt-1">{service.description}</CardDescription>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-lg font-bold">${String(service.price)}</span>
+                                <p className="text-sm text-muted-foreground">{service.duration} min</p>
+                              </div>
+                            </div>
+                          </CardHeader>
+                          <CardFooter className="pt-2">
+                            <Button 
+                              onClick={() => handleServiceSelect(service)}
+                              className="w-full"
+                            >
+                              Book Now
+                            </Button>
+                          </CardFooter>
+                        </Card>
+                      ))
+                    ) : (
+                      <div className="text-center py-12">
+                        <p className="text-muted-foreground">No services available at the moment.</p>
+                      </div>
+                    )}
+                  </div>
+                </TabsContent>
+                
+                <TabsContent value="booking" className="mt-6">
+                  {selectedService && (
+                    <div className="space-y-6">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle>Selected Service</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="flex justify-between items-center">
+                            <div>
+                              <h3 className="font-medium">{selectedService.name}</h3>
+                              <p className="text-sm text-muted-foreground">{selectedService.duration} minutes</p>
+                            </div>
+                            <div>
+                              <span className="text-lg font-bold">${String(selectedService.price)}</span>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>Select Date</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <Calendar
+                              mode="single"
+                              selected={selectedDate}
+                              onSelect={setSelectedDate}
+                              disabled={(date) => 
+                                date < new Date(new Date().setHours(0, 0, 0, 0)) ||
+                                date > new Date(new Date().setMonth(new Date().getMonth() + 2))
+                              }
+                              className="rounded-md border"
+                            />
+                          </CardContent>
+                        </Card>
+                        
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>Available Time Slots</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            {availableSlots.length > 0 ? (
+                              <div className="grid grid-cols-2 gap-2">
+                                {availableSlots.map((slot) => (
+                                  <Button
+                                    key={slot.id}
+                                    variant={selectedSlot?.id === slot.id ? "default" : "outline"}
+                                    className="justify-start"
+                                    onClick={() => handleSlotSelect(slot)}
+                                  >
+                                    <Clock className="mr-2 h-4 w-4" />
+                                    {slot.start_time}
+                                  </Button>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="text-center py-8">
+                                <p className="text-muted-foreground">No available slots for the selected date.</p>
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
                       </div>
                       
-                      <div>
-                        <h3 className="font-medium mb-3">Time</h3>
-                        <div className="bg-background/40 rounded-lg p-3 max-h-64 overflow-y-auto">
-                          {fetchingSlots ? (
-                            <div className="flex justify-center py-8">
-                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-                            </div>
-                          ) : (
-                            <div className="grid grid-cols-2 gap-2">
-                              {timeSlots.map((slot) => (
-                                <button
-                                  key={slot.id}
-                                  onClick={() => slot.available && handleTimeSlotSelect(slot.id)}
-                                  className={cn(
-                                    "p-2 rounded-md text-sm flex items-center justify-center",
-                                    slot.available ? (
-                                      selectedSlot === slot.id
-                                        ? salon.type === 'men'
-                                          ? "bg-salon-men text-white"
-                                          : "bg-salon-women text-white"
-                                        : "border hover:border-primary"
-                                    ) : "bg-muted text-muted-foreground opacity-60 cursor-not-allowed"
-                                  )}
-                                  disabled={!slot.available}
-                                >
-                                  {slot.time}
-                                  {selectedSlot === slot.id && (
-                                    <CheckCircle className="ml-1 h-3 w-3" />
-                                  )}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                      <Button 
+                        className="w-full" 
+                        size="lg"
+                        disabled={!selectedSlot || isBooking}
+                        onClick={handleBookAppointment}
+                      >
+                        {isBooking ? "Processing..." : "Book Appointment"}
+                      </Button>
                     </div>
-                  </motion.div>
-                </div>
-              </div>
+                  )}
+                </TabsContent>
+              </Tabs>
             </div>
-          </section>
-        </main>
-        
-        <Footer />
+          </div>
+          
+          <div>
+            <Card>
+              <CardHeader>
+                <CardTitle>About {salon.business_name}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground">
+                  {salon.business_name} is a premier salon offering a wide range of beauty and wellness services. 
+                  Our experienced professionals are dedicated to providing exceptional service in a relaxing environment.
+                </p>
+                <div className="mt-6">
+                  <h3 className="font-semibold mb-2">Business Hours</h3>
+                  <ul className="space-y-1 text-sm">
+                    <li className="flex justify-between">
+                      <span>Monday - Friday</span>
+                      <span>9:00 AM - 5:00 PM</span>
+                    </li>
+                    <li className="flex justify-between">
+                      <span>Saturday</span>
+                      <span>10:00 AM - 4:00 PM</span>
+                    </li>
+                    <li className="flex justify-between">
+                      <span>Sunday</span>
+                      <span>Closed</span>
+                    </li>
+                  </ul>
+                </div>
+              </CardContent>
+            </Card>
+            
+            <Card className="mt-6">
+              <CardHeader>
+                <CardTitle>Location</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="aspect-video bg-muted rounded-md flex items-center justify-center">
+                  <MapPin className="h-8 w-8 text-muted-foreground" />
+                  <span className="ml-2 text-muted-foreground">Map view coming soon</span>
+                </div>
+                <p className="mt-4 text-sm text-muted-foreground">
+                  {salon.business_address}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       </div>
     </PageTransition>
   );

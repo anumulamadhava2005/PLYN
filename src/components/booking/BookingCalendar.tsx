@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/components/ui/use-toast';
-import { fetchAvailableSlots } from '@/utils/bookingUtils';
+import { fetchAvailableSlots, createDynamicTimeSlots } from '@/utils/bookingUtils';
 
 interface BookingCalendarProps {
   salonId: string;
@@ -25,6 +25,7 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<any[]>([]);
+  const [generatingSlots, setGeneratingSlots] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
@@ -38,7 +39,38 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({
     setIsLoading(true);
     try {
       const formattedDate = format(selectedDate, 'yyyy-MM-dd');
-      const slots = await fetchAvailableSlots(salonId, formattedDate);
+
+      // First, check if any slots exist for this date
+      let slots = await fetchAvailableSlots(salonId, formattedDate);
+
+      // If no slots exist, try to generate dynamic slots first
+      if (slots.length === 0) {
+        setGeneratingSlots(true);
+
+        // Fetch service durations for this merchant to create appropriate slots
+        const { data: serviceData, error: serviceError } = await supabase
+          .from('services')
+          .select('duration')
+          .eq('merchant_id', salonId);
+
+        if (!serviceError && serviceData) {
+          const durations = serviceData.map(s => s.duration);
+          if (durations.length > 0) {
+            // Generate slots based on service durations
+            await createDynamicTimeSlots(salonId, formattedDate, durations);
+          } else {
+            // If no service durations are found, create default 30-minute slots
+            await createDynamicTimeSlots(salonId, formattedDate, [30]);
+          }
+        } else {
+          // If there's an error or no services, create default slots
+          await createDynamicTimeSlots(salonId, formattedDate, [30]);
+        }
+
+        // Now fetch the newly created slots
+        slots = await fetchAvailableSlots(salonId, formattedDate);
+        setGeneratingSlots(false);
+      }
       setAvailableSlots(slots);
     } catch (error: any) {
       console.error('Error loading slots:', error);
@@ -48,6 +80,7 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({
         variant: 'destructive',
       });
       setAvailableSlots([]);
+      setGeneratingSlots(false);
     } finally {
       setIsLoading(false);
     }
@@ -63,7 +96,7 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({
 
   const groupSlotsByHour = () => {
     const grouped: Record<string, any[]> = {};
-    
+
     availableSlots.forEach(slot => {
       const hour = slot.start_time.split(':')[0];
       if (!grouped[hour]) {
@@ -71,8 +104,8 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({
       }
       grouped[hour].push(slot);
     });
-    
-    return Object.entries(grouped).sort(([hourA], [hourB]) => 
+
+    return Object.entries(grouped).sort(([hourA], [hourB]) =>
       parseInt(hourA) - parseInt(hourB)
     );
   };
@@ -105,21 +138,22 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({
 
       <div>
         <label className="block text-sm font-medium mb-2">Available Times</label>
-        {isLoading ? (
+        {isLoading || generatingSlots ? (
           <div className="space-y-2">
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
+            {generatingSlots && <p className="text-xs text-muted-foreground text-center mt-2">Generating available slots...</p>}
           </div>
         ) : availableSlots.length > 0 ? (
           <div className="space-y-4">
             {groupSlotsByHour().map(([hour, slots]) => (
               <div key={hour} className="space-y-2">
                 <h3 className="text-sm font-medium text-muted-foreground">
-                  {parseInt(hour) < 12 
-                    ? `${hour} AM` 
-                    : parseInt(hour) === 12 
-                      ? '12 PM' 
+                  {parseInt(hour) < 12
+                    ? `${hour} AM`
+                    : parseInt(hour) === 12
+                      ? '12 PM'
                       : `${parseInt(hour) - 12} PM`}
                 </h3>
                 <div className="grid grid-cols-3 gap-2">
@@ -149,14 +183,14 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({
         ) : (
           <div className="bg-muted/40 rounded-md p-4 text-center">
             <p className="text-muted-foreground">
-              {selectedDate 
-                ? 'No available time slots for the selected date' 
+              {selectedDate
+                ? 'No available time slots for the selected date'
                 : 'Please select a date to see available times'}
             </p>
             {selectedDate && (
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 className="mt-2"
                 onClick={() => {
                   const tomorrow = new Date(selectedDate);

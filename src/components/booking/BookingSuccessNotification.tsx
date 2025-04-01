@@ -1,39 +1,29 @@
-import { toast } from '@/components/ui/use-toast';
-import { CheckCircle, Calendar, Clock } from 'lucide-react';
-export interface BookingSuccessData {
-  bookingId: string;
+import React from 'react';
+import { toast } from '@/hooks/use-toast';
+import { Check, Calendar, Clock } from 'lucide-react';
+
+interface BookingDetails {
   salonName: string;
+  serviceName: string;
   date: string;
-  timeSlot: string;
-  services: Array<{ name: string; price: number }>;
-  totalPrice: number;
+  time: string;
 }
 
-export const showBookingSuccessNotification = (bookingData: BookingSuccessData) => {
+export const showBookingSuccessNotification = (booking: BookingDetails) => {
   toast({
-    title: (
-      <div className="flex items-center">
-        <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-        <span>Booking Confirmed!</span>
-      </div>
-    ),
+    title: "Booking Confirmed!",
     description: (
-      <div className="mt-2 space-y-2">
-        <p className="font-medium">{bookingData.salonName}</p>
-        <div className="flex items-center text-sm">
-          <Calendar className="h-4 w-4 mr-1.5 text-muted-foreground" />
-          <span>{new Date(bookingData.date).toLocaleDateString('en-US', { 
-            weekday: 'short', 
-            month: 'short', 
-            day: 'numeric' 
-          })}</span>
+      <div className="flex flex-col gap-1">
+        <p>Your appointment has been successfully booked!</p>
+        <div className="flex items-center gap-2 mt-2">
+          <Calendar className="h-4 w-4 text-primary" />
+          <span>{booking.date}</span>
+          <Clock className="h-4 w-4 ml-2 text-primary" />
+          <span>{booking.time}</span>
         </div>
-        <div className="flex items-center text-sm">
-          <Clock className="h-4 w-4 mr-1.5 text-muted-foreground" />
-          <span>{bookingData.timeSlot}</span>
-        </div>
+        <p className="font-medium mt-1">{booking.salonName} - {booking.serviceName}</p>
       </div>
     ),
-    duration: 8000,
+    variant: "default"
   });
 };

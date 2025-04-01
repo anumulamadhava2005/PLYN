@@ -193,6 +193,39 @@ export type Database = {
           },
         ]
       }
+      services: {
+        Row: {
+          created_at: string
+          description: string
+          duration: number
+          id: string
+          merchant_id: string
+          name: string
+          price: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          duration?: number
+          id?: string
+          merchant_id: string
+          name: string
+          price?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          duration?: number
+          id?: string
+          merchant_id?: string
+          name?: string
+          price?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           age: number | null

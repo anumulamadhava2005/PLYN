@@ -2,6 +2,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { showBookingSuccessNotification } from "@/components/booking/BookingSuccessNotification";
+import { addMinutes, format, parseISO } from "date-fns";
 
 // Interface for booking data
 export interface BookingData {
@@ -19,6 +20,10 @@ export interface BookingData {
   notes?: string;
   coinsUsed?: number;
   coinsEarned?: number;
+  services: {
+    name: any;
+    price: any;
+  }[] // Optional field for services
 }
 
 // Interface for payment data
@@ -41,7 +46,7 @@ export const initializeDatabase = async () => {
 export const createBooking = async (bookingData: BookingData) => {
   try {
     console.log("Creating booking with data:", bookingData);
-    
+
     const { data: newBooking, error: bookingError } = await supabase
       .from("bookings")
       .insert({
@@ -66,13 +71,13 @@ export const createBooking = async (bookingData: BookingData) => {
       .select()
       .single();
 
-    
-      if (bookingError) {
-        console.error("Error in createBooking:", bookingError);
-        throw bookingError;
-      }
-  
-      console.log("Booking created successfully:", newBooking);
+
+    if (bookingError) {
+      console.error("Error in createBooking:", bookingError);
+      throw bookingError;
+    }
+
+    console.log("Booking created successfully:", newBooking);
 
     return newBooking;
   } catch (error) {
@@ -83,7 +88,7 @@ export const createBooking = async (bookingData: BookingData) => {
 
 // Function to create a payment record
 export const createPayment = async (paymentData: PaymentData) => {
-  try {    
+  try {
     console.log("Creating payment with data:", paymentData);
 
     // For development purposes, always create a successful payment
@@ -102,10 +107,10 @@ export const createPayment = async (paymentData: PaymentData) => {
       .select()
       .single();
 
-      if (paymentError) {
-        console.error("Error in createPayment:", paymentError);
-        throw paymentError;
-      }
+    if (paymentError) {
+      console.error("Error in createPayment:", paymentError);
+      throw paymentError;
+    }
 
     // Update the booking with the payment ID
     const { error: updateError } = await supabase
@@ -113,12 +118,12 @@ export const createPayment = async (paymentData: PaymentData) => {
       .update({ payment_id: newPayment.id })
       .eq("id", paymentData.bookingId);
 
-      if (updateError) {
-        console.error("Error updating booking with payment_id:", updateError);
-        throw updateError;
-      }
-  
-      console.log("Payment created successfully:", newPayment);
+    if (updateError) {
+      console.error("Error updating booking with payment_id:", updateError);
+      throw updateError;
+    }
+
+    console.log("Payment created successfully:", newPayment);
 
     return newPayment;
   } catch (error) {
@@ -131,7 +136,7 @@ export const createPayment = async (paymentData: PaymentData) => {
 export const getUserCoins = async (userId: string) => {
   try {
     console.log("Fetching coins for user:", userId);
-    
+
     const { data, error } = await supabase
       .from("profiles")
       .select("coins")
@@ -139,11 +144,11 @@ export const getUserCoins = async (userId: string) => {
       .single();
 
 
-      if (error) {
-        console.error("Error in getUserCoins:", error);
-        throw error;
-      }
-          
+    if (error) {
+      console.error("Error in getUserCoins:", error);
+      throw error;
+    }
+
     // Handle the coins property safely
     const coins = data?.coins || 0;
     console.log("User coins retrieved:", coins);
@@ -158,7 +163,7 @@ export const getUserCoins = async (userId: string) => {
 export const updateUserCoins = async (userId: string, coinsEarned: number, coinsUsed: number) => {
   try {
     console.log(`Updating coins for user ${userId}: earned ${coinsEarned}, used ${coinsUsed}`);
-    
+
     // First get current coin balance
     const { data: userData, error: fetchError } = await supabase
       .from("profiles")
@@ -166,15 +171,15 @@ export const updateUserCoins = async (userId: string, coinsEarned: number, coins
       .eq("id", userId)
       .single();
 
-      if (fetchError) {
-        console.error("Error fetching current coin balance:", fetchError);
-        throw fetchError;
-      }
-    
+    if (fetchError) {
+      console.error("Error fetching current coin balance:", fetchError);
+      throw fetchError;
+    }
+
     // Safely access the coins property
     const currentCoins = userData?.coins || 0;
     const newCoinsBalance = currentCoins + coinsEarned - coinsUsed;
-    
+
     // Update the user's coin balance
     const { data, error: updateError } = await supabase
       .from("profiles")
@@ -183,13 +188,13 @@ export const updateUserCoins = async (userId: string, coinsEarned: number, coins
       .select()
       .single();
 
-      if (updateError) {
-        console.error("Error updating coin balance:", updateError);
-        throw updateError;
-      }
-      
-      console.log("Coins updated successfully. New balance:", newCoinsBalance);
-    
+    if (updateError) {
+      console.error("Error updating coin balance:", updateError);
+      throw updateError;
+    }
+
+    console.log("Coins updated successfully. New balance:", newCoinsBalance);
+
     return newCoinsBalance;
   } catch (error) {
     console.error("Error updating user coins:", error);
@@ -239,7 +244,7 @@ export const updateBookingStatus = async (bookingId: string, status: string) => 
 export const checkSlotAvailability = async (salonId: string, date: string, timeSlot: string) => {
   try {
     console.log(`Checking slot availability for salon ${salonId} on ${date} at ${timeSlot}`);
-    
+
     // Begin transaction
     const { data, error } = await supabase
       .from("slots")
@@ -251,11 +256,11 @@ export const checkSlotAvailability = async (salonId: string, date: string, timeS
       .limit(1);
 
 
-      if (error) {
-        console.error("Error checking slot availability:", error);
-        throw error;
-      }
-          
+    if (error) {
+      console.error("Error checking slot availability:", error);
+      throw error;
+    }
+
     // If no slots are found, or if the slot is already booked
     if (!data || data.length === 0) {
       console.log("No available slots found");
@@ -289,9 +294,9 @@ export const bookSlot = async (slotId: string) => {
       .eq("id", slotId)
       .eq("is_booked", false)
       .single();
-    
+
     if (checkError) {
-      if (checkError.code === "PGRST116") { 
+      if (checkError.code === "PGRST116") {
         // No rows returned, slot is already booked
         console.error("Slot is already booked");
         throw new Error("This slot has already been booked by another customer.");
@@ -310,15 +315,15 @@ export const bookSlot = async (slotId: string) => {
       .single();
 
 
-      if (error) {
-        console.error("Error booking slot:", error);
-        throw error;
-      }
-    
+    if (error) {
+      console.error("Error booking slot:", error);
+      throw error;
+    }
+
     if (!data) {
       throw new Error("Slot was booked by someone else while processing your request.");
     }
-    
+
     return data;
   } catch (error) {
     console.error("Error booking slot:", error);
@@ -364,30 +369,90 @@ export const fetchMerchantSlots = async (merchantId: string) => {
 };
 
 // Function to delete a slot (for merchant use)
-export const deleteSlot = async (slotId: string) => {
+// New function to optimize slot creation based on working hours (9:00-17:00)
+export const createDynamicTimeSlots = async (merchantId: string, date: string, serviceDurations: number[] = [30]) => {
   try {
-    // Check if the slot is already booked
-    const { data: slotData, error: checkError } = await supabase
-      .from("slots")
-      .select("is_booked")
-      .eq("id", slotId)
-      .single();
-      
-    if (checkError) throw checkError;
-    
-    if (slotData.is_booked) {
-      throw new Error("Cannot delete a slot that has already been booked.");
-    }
-    
-    const { error } = await supabase
-      .from("slots")
-      .delete()
-      .eq("id", slotId);
+    // Default working hours from 9:00 to 17:00 (5:00 PM)
+    const workingStartHour = 9;
+    const workingEndHour = 17;
 
-    if (error) throw error;
-    return true;
+    // Get existing slots for this date to avoid duplicates
+    const { data: existingSlots, error: existingError } = await supabase
+      .from("slots")
+      .select("*")
+      .eq("merchant_id", merchantId)
+      .eq("date", date);
+
+    if (existingError) throw existingError;
+
+    // If slots already exist for this date, don't create duplicates
+    if (existingSlots && existingSlots.length > 0) {
+      console.log(`${existingSlots.length} slots already exist for ${date}`);
+      return existingSlots;
+    }
+
+    // Create slots based on all possible service durations
+    const slots = [];
+    const slotsSeen = new Set(); // To avoid duplicate slots
+
+    // Ensure we have at least one service duration
+    if (serviceDurations.length === 0) {
+      serviceDurations = [30]; // Default 30 minute slots
+    }
+
+    // Create slots for each service duration
+    for (const duration of serviceDurations) {
+      // Start at 9:00 AM
+      let currentDate = new Date(`${date}T09:00:00`);
+      const endTime = new Date(`${date}T${workingEndHour}:00:00`);
+
+      // Create slots until we reach the end of working hours
+      while (currentDate < endTime) {
+        const startTimeStr = format(currentDate, "HH:mm");
+
+        // Only create a slot if there's enough time left in the workday
+        const potentialEndTime = addMinutes(currentDate, duration);
+        if (potentialEndTime <= endTime) {
+          const endTimeStr = format(potentialEndTime, "HH:mm");
+
+          // Create a unique key to avoid duplicate slots
+          const slotKey = `${startTimeStr}-${endTimeStr}`;
+
+          if (!slotsSeen.has(slotKey)) {
+            slots.push({
+              merchant_id: merchantId,
+              date: date,
+              start_time: startTimeStr,
+              end_time: endTimeStr,
+              is_booked: false,
+              service_duration: duration
+            });
+
+            slotsSeen.add(slotKey);
+          }
+        }
+
+        // Move to the next potential slot (30 minute increments for flexibility)
+        currentDate = addMinutes(currentDate, 30);
+      }
+    }
+
+    // If we have slots to create, insert them
+    if (slots.length > 0) {
+      const { data, error } = await supabase
+        .from("slots")
+        .insert(slots)
+        .select();
+
+      if (error) throw error;
+
+      console.log(`Created ${data.length} dynamic slots for ${date}`);
+      return data;
+    }
+
+    return [];
   } catch (error) {
-    console.error("Error deleting slot:", error);
+    console.error("Error creating dynamic time slots:", error);
     throw error;
   }
 };
